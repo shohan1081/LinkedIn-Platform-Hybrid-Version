@@ -1,0 +1,43 @@
+# =====================
+# Python
+# =====================
+__pycache__/
+*.py[cod]
+*.pyo
+
+# =====================
+# Django
+# =====================
+.env
+.env.*
+db.sqlite3
+media/
+staticfiles/
+
+# =====================
+# Virtual Environment
+# =====================
+venv/
+.env/
+.venv/
+
+# =====================
+# Migrations (DO NOT ignore .py files)
+# =====================
+*/migrations/__pycache__/
+
+# =====================
+# PostgreSQL
+# =====================
+*.sql
+*.dump
+*.backup
+.pgpass
+
+# =====================
+# OS / Editor
+# =====================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
