@@ -890,6 +890,7 @@ class SetLanguageView(APIView):
 class UserProfileRegistrationView(generics.UpdateAPIView):
     serializer_class = UserProfileRegistrationSerializer
     permission_classes = [IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
 
     def get_object(self):
         return self.request.user
