@@ -403,7 +403,30 @@ class VerifyOTPView(APIView):
                     user.is_email_verified = True
                     user.clear_otp()
                     user.save()
-                    return standard_response(success=True, message="OTP verified successfully.")
+
+                    # Generate JWT tokens
+                    refresh = RefreshToken.for_user(user)
+                    access_token = str(refresh.access_token)
+                    refresh_token = str(refresh)
+
+                    return standard_response(
+                        success=True,
+                        message="OTP verified successfully. User logged in.",
+                        data={
+                            'user': {
+                                'id': str(user.id),
+                                'email': user.email,
+                                'first_name': user.first_name,
+                                'last_name': user.last_name,
+                                'is_email_verified': user.is_email_verified,
+                                'profile_picture': user.profile_picture.url if user.profile_picture else None,
+                            },
+                            'tokens': {
+                                'access': access_token,
+                                'refresh': refresh_token,
+                            }
+                        }
+                    )
                 else:
                     return standard_response(success=False, message="Invalid or expired OTP.", status_code=status.HTTP_400_BAD_REQUEST)
             except User.DoesNotExist:

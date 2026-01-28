@@ -1,0 +1,531 @@
+API Documentation for the `users` app.
+
+This document provides details on the API endpoints available in the `users` app, including request and response formats.
+
+---
+
+## Base URL
+
+The base URL for all endpoints is `/api/users/`.
+
+---
+
+## Authentication
+
+Endpoints that require authentication expect a JSON Web Token (JWT) in the `Authorization` header:
+
+`Authorization: Bearer <access_token>`
+
+---
+
+## Standard Response Format
+
+The API returns responses in a standardized format:
+
+**Success Response:**
+```json
+{
+    "success": true,
+    "message": "A descriptive message",
+    "data": { ... }
+}
+```
+
+**Error Response:**
+```json
+{
+    "success": false,
+    "message": "A descriptive error message",
+    "errors": { ... }
+}
+```
+
+---
+
+## API Endpoints
+
+### 1. User Registration
+
+- **Endpoint:** `signup/`
+- **Method:** `POST`
+- **Description:** Registers a new user.
+- **Authentication:** Not required.
+- **Request Body:**
+  ```json
+  {
+      "email": "user@example.com",
+      "password": "Password123!",
+      "confirm_password": "Password123!"
+  }
+  ```
+- **Success Response (201 Created):**
+  ```json
+  {
+      "success": true,
+      "message": "Registration successful. Please check your email for the OTP to verify your account.",
+      "data": {
+          "user": {
+              "id": "a_uuid",
+              "email": "user@example.com",
+              "is_email_verified": false
+          }
+      }
+  }
+  ```
+- **Error Response (400 Bad Request):**
+  ```json
+  {
+      "success": false,
+      "message": "Registration failed",
+      "errors": {
+          "email": ["An account with this email already exists."],
+          "password": ["Password must contain at least one uppercase letter."]
+      }
+  }
+  ```
+
+### 2. User Login
+
+- **Endpoint:** `login/`
+- **Method:** `POST`
+- **Description:** Authenticates a user and returns JWT tokens.
+- **Authentication:** Not required.
+- **Request Body:**
+  ```json
+  {
+      "email": "user@example.com",
+      "password": "Password123!"
+  }
+  ```
+- **Success Response (200 OK):**
+  ```json
+  {
+      "success": true,
+      "message": "Login successful",
+      "data": {
+          "user": {
+              "id": "a_uuid",
+              "email": "user@example.com",
+              "first_name": "John",
+              "last_name": "Doe",
+              "is_email_verified": true,
+              "profile_picture": null
+          },
+          "tokens": {
+              "access": "access_token",
+              "refresh": "refresh_token"
+          }
+      }
+  }
+  ```
+- **Error Response (401 Unauthorized):**
+  ```json
+  {
+      "success": false,
+      "message": "Login failed",
+      "errors": {
+          "detail": "Invalid email or password"
+      }
+  }
+  ```
+
+### 3. User Logout
+
+- **Endpoint:** `logout/`
+- **Method:** `POST`
+- **Description:** Blacklists the user's refresh token to log them out.
+- **Authentication:** Required.
+- **Request Body:**
+  ```json
+  {
+      "refresh": "refresh_token"
+  }
+  ```
+- **Success Response (200 OK):**
+  ```json
+  {
+      "success": true,
+      "message": "Logout successful"
+  }
+  ```
+- **Error Response (400 Bad Request):**
+  ```json
+  {
+      "success": false,
+      "message": "Refresh token is required"
+  }
+  ```
+
+### 4. User Profile Completion
+- **Endpoint:** `profile-complete/`
+- **Method:** `PUT` or `PATCH`
+- **Description:** Updates user profile information after registration. This is intended to be used to complete the user's profile with address and other details not collected at sign-up.
+- **Authentication:** Required. The user must be logged in.
+- **Request Body:**
+  ```json
+  {
+    "first_name": "John",
+    "last_name": "Doe",
+    "date_of_birth": "1990-01-15",
+    "address": "123 Main St",
+    "address_line_2": "Apt 4B",
+    "city": "Anytown",
+    "state": "CA",
+    "zip_code": "12345"
+  }
+  ```
+- **Success Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "message": "Profile updated successfully.",
+    "data": {
+        "first_name": "John",
+        "last_name": "Doe",
+        "date_of_birth": "1990-01-15",
+        "address": "123 Main St",
+        "address_line_2": "Apt 4B",
+        "city": "Anytown",
+        "state": "CA",
+        "zip_code": "12345"
+    }
+  }
+  ```
+- **Error Response (400 Bad Request):**
+  ```json
+  {
+    "success": false,
+    "message": "Profile update failed",
+    "errors": {
+      "date_of_birth": ["You must be at least 13 years old."],
+      "zip_code": ["Enter a valid zip code."]
+    }
+  }
+  ```
+
+### 4. Verify OTP
+
+- **Endpoint:** `verify-otp/`
+- **Method:** `POST`
+- **Description:** Verifies the OTP sent to the user's email and logs them in.
+- **Authentication:** Not required.
+- **Request Body:**
+  ```json
+  {
+      "email": "user@example.com",
+      "otp": "1234"
+  }
+  ```
+- **Success Response (200 OK):**
+  ```json
+  {
+      "success": true,
+      "message": "OTP verified successfully. User is now logged in.",
+      "data": {
+          "user": {
+              "id": "a_uuid",
+              "email": "user@example.com",
+              "is_email_verified": true
+          },
+          "tokens": {
+              "access": "access_token",
+              "refresh": "refresh_token"
+          }
+      }
+  }
+  ```
+- **Error Response (400 Bad Request):**
+  ```json
+  {
+      "success": false,
+      "message": "Invalid or expired OTP."
+  }
+  ```
+
+### 5. Resend OTP
+
+- **Endpoint:** `resend-otp/`
+- **Method:** `POST`
+- **Description:** Resends the OTP to the user's email.
+- **Authentication:** Not required.
+- **Request Body:**
+  ```json
+  {
+      "email": "user@example.com"
+  }
+  ```
+- **Success Response (200 OK):**
+  ```json
+  {
+      "success": true,
+      "message": "OTP has been resent to your email."
+  }
+  ```
+- **Error Response (400 Bad Request):**
+  ```json
+  {
+      "success": false,
+      "message": "User is already active."
+  }
+  ```
+
+### 6. Password Reset Request
+
+- **Endpoint:** `password-reset/`
+- **Method:** `POST`
+- **Description:** Initiates the password reset process by sending an OTP.
+- **Authentication:** Not required.
+- **Request Body:**
+  ```json
+  {
+      "email": "user@example.com"
+  }
+  ```
+- **Success Response (200 OK):**
+  ```json
+  {
+      "success": true,
+      "message": "If an account with that email exists, an OTP has been sent."
+  }
+  ```
+
+### 7. Password Reset OTP Verification
+
+- **Endpoint:** `password-reset-otp-verify/`
+- **Method:** `POST`
+- **Description:** Verifies the OTP for password reset.
+- **Authentication:** Not required.
+- **Request Body:**
+  ```json
+  {
+      "email": "user@example.com",
+      "otp": "1234"
+  }
+  ```
+- **Success Response (200 OK):**
+  ```json
+  {
+      "success": true,
+      "message": "OTP verified successfully. You can now reset your password."
+  }
+  ```
+
+### 8. Password Reset Confirm
+
+- **Endpoint:** `password-reset-confirm/`
+- **Method:** `POST`
+- **Description:** Sets a new password after OTP verification.
+- **Authentication:** Not required.
+- **Request Body:**
+  ```json
+  {
+      "email": "user@example.com",
+      "password": "NewPassword123!",
+      "confirm_password": "NewPassword123!"
+  }
+  ```
+- **Success Response (200 OK):**
+  ```json
+  {
+      "success": true,
+      "message": "Password has been reset successfully. You can now login with your new password."
+  }
+  ```
+
+### 9. Password Change
+
+- **Endpoint:** `password-change/`
+- **Method:** `POST`
+- **Description:** Allows an authenticated user to change their password.
+- **Authentication:** Required.
+- **Request Body:**
+  ```json
+  {
+      "old_password": "OldPassword123!",
+      "new_password": "NewPassword123!",
+      "confirm_password": "NewPassword123!"
+  }
+  ```
+- **Success Response (200 OK):**
+  ```json
+  {
+      "success": true,
+      "message": "Password changed successfully"
+  }
+  ```
+
+### 10. User Profile
+
+- **Endpoint:** `profile/`
+- **Methods:** `GET`, `PUT`, `PATCH`
+- **Description:**
+  - `GET`: Retrieves the user's profile.
+  - `PUT`: Updates the entire user profile.
+  - `PATCH`: Partially updates the user profile.
+- **Authentication:** Required.
+- **Request Body (`PUT`, `PATCH`):**
+  ```json
+  {
+      "first_name": "John",
+      "last_name": "Doe",
+      "date_of_birth": "1990-01-15",
+      "gender": "male",
+      "occupation": "Software Engineer",
+      "country": "USA",
+      "bio": "A short bio about the user.",
+      "profile_picture": "(file upload)",
+      "cover_photo": "(file upload)"
+  }
+  ```
+- **Success Response (200 OK):**
+  ```json
+  {
+      "success": true,
+      "message": "Profile retrieved/updated successfully",
+      "data": {
+          "id": "a_uuid",
+          "email": "user@example.com",
+          "first_name": "John",
+          "last_name": "Doe",
+          "date_of_birth": "1990-01-15",
+          "gender": "male",
+          "occupation": "Software Engineer",
+          "country": "USA",
+          "age": 36,
+          "bio": "A short bio about the user.",
+          "profile_picture": "/media/profile_pictures/...",
+          "cover_photo": "/media/cover_photos/...",
+          "is_email_verified": true,
+          "is_subscribed": false,
+          "date_joined": "...",
+          "last_login": "..."
+      }
+  }
+  ```
+
+### 11. Account Deletion
+
+- **Endpoint:** `account-delete/`
+- **Method:** `DELETE`
+- **Description:** Deletes the authenticated user's account.
+- **Authentication:** Required.
+- **Request Body:**
+  ```json
+  {
+      "password": "Password123!",
+      "confirm_deletion": true
+  }
+  ```
+- **Success Response (200 OK):**
+  ```json
+  {
+      "success": true,
+      "message": "Account deleted successfully"
+  }
+  ```
+
+### 12. Token Refresh
+
+- **Endpoint:** `token/refresh/`
+- **Method:** `POST`
+- **Description:** Refreshes an expired access token.
+- **Authentication:** Not required.
+- **Request Body:**
+  ```json
+  {
+      "refresh": "refresh_token"
+  }
+  ```
+- **Success Response (200 OK):**
+  ```json
+  {
+      "success": true,
+      "message": "Token refreshed successfully",
+      "data": {
+          "access": "new_access_token"
+      }
+  }
+  ```
+
+### 13. Token Verify
+
+- **Endpoint:** `token/verify/`
+- **Method:** `POST`
+- **Description:** Verifies an access token.
+- **Authentication:** Not required.
+- **Request Body:**
+  ```json
+  {
+      "token": "access_token"
+  }
+  ```
+- **Success Response (200 OK):**
+  ```json
+  {
+      "success": true,
+      "message": "Token is valid",
+      "data": {
+          "valid": true
+      }
+  }
+  ```
+
+### 14. Set Language
+
+- **Endpoint:** `set-language/`
+- **Method:** `POST`
+- **Description:** Sets the user's preferred language for API responses.
+- **Authentication:** Required.
+- **Request Body:**
+  ```json
+  {
+      "language": "hi"
+  }
+  ```
+- **Success Response (200 OK):**
+  ```json
+  {
+      "success": true,
+      "message": "Language preference updated successfully.",
+      "data": {
+          "language": "hi"
+      }
+  }
+  ```
+
+
+---
+
+### Account and Profile Data Deletion
+
+These endpoints are designed for compliance with data privacy regulations. They are not intended for direct use by most client applications but are available for users to manage their data.
+
+- **Request Account Deletion Form:**
+  - **Endpoint:** `delete-account/`
+  - **Method:** `GET`
+  - **Description:** Renders an HTML form to request account deletion.
+
+- **Submit Account Deletion Request:**
+  - **Endpoint:** `delete-account-request/`
+  - **Method:** `POST`
+  - **Description:** Submits the account deletion request. Sends a verification email.
+
+- **Verify Account Deletion:**
+  - **Endpoint:** `verify-account-deletion/<uuid:token>/`
+  - **Method:** `GET`
+  - **Description:** Deletes the account upon verification.
+
+- **Request Profile Data Deletion Form:**
+  - **Endpoint:** `delete-profile-data/`
+  - **Method:** `GET`
+  - **Description:** Renders an HTML form to request profile data deletion.
+
+- **Submit Profile Data Deletion Request:**
+  - **Endpoint:** `delete-profile-data-request/`
+  - **Method:** `POST`
+  - **Description:** Submits the profile data deletion request. Sends a verification email.
+
+- **Verify Profile Data Deletion:**
+  - **Endpoint:** `verify-profile-data-deletion/<uuid:token>/`
+  - **Method:** `GET`
+  - **Description:** Anonymizes the user's profile data upon verification.

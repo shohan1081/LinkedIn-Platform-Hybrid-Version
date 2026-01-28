@@ -1,0 +1,15 @@
+To enable asynchronous email sending, please follow these steps:
+
+1.  **Install Redis:**
+    Make sure you have a Redis server installed and running. If you don't have it installed, you can download it from [redis.io](https://redis.io/download).
+    
+    To start Redis on Windows, you can usually find `redis-server.exe` in the installation directory and run it.
+
+2.  **Run Celery Worker:**
+    Open a new terminal in your project's root directory (where `manage.py` is located) and run the following command:
+    ```bash
+    celery -A config worker -l info
+    ```
+    This command starts the Celery worker, which will listen for tasks (like sending emails) and execute them in the background.
+
+With Redis and the Celery worker running, your email sending operations will be processed asynchronously, improving the responsiveness of your API.
