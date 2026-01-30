@@ -22,4 +22,6 @@ urlpatterns = [
     path('api/users/', include('users.urls')),
     # Legal pages
     path('legal/', include('legal_pages.urls')),
+    # Business account
+    path('api/business-account/', include('business_account.urls')),
 ]
