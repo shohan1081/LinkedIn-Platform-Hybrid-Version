@@ -5,11 +5,9 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView, TokenVerifyView
-from rest_framework_simplejwt.exceptions import TokenError, InvalidToken, AuthenticationFailed
-from .backends import BusinessAccountAuthentication
+from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from django.utils import timezone
 from django.contrib.auth import get_user_model # To access User model for example in CustomTokenRefreshView
-from django.http import Http404 # Import Http404
 
 from .models import BusinessAccount
 from .serializers import (
@@ -312,15 +310,20 @@ class PasswordResetConfirmView(APIView):
 
 
 class PasswordChangeView(APIView):
-    serializer_class = PasswordChangeSerializer
-    authentication_classes = [BusinessAccountAuthentication]
     permission_classes = [IsAuthenticated]
-
+    authentication_classes = [JWTAuthentication] # Explicitly set authentication
+    serializer_class = PasswordChangeSerializer
+    
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
         
         if serializer.is_valid():
-            business_account = request.user
+            business_account = request.user # request.user is how DRF passes the authenticated user/account
+            # Ensure the authenticated user is a BusinessAccount instance
+            if not isinstance(business_account, BusinessAccount):
+                return standard_response(success=False, message="Unauthorized access.", status_code=status.HTTP_403_FORBIDDEN)
+
+
             old_password = serializer.validated_data['old_password']
             new_password = serializer.validated_data['new_password']
             
@@ -349,16 +352,17 @@ class PasswordChangeView(APIView):
         )
 
 
-from rest_framework.exceptions import AuthenticationFailed
-# ... other imports ...
-
 class BusinessAccountProfileRegistrationView(generics.UpdateAPIView):
-    serializer_class = BusinessAccountProfileRegistrationSerializer
-    authentication_classes = [BusinessAccountAuthentication]
     permission_classes = [IsAuthenticated]
+    authentication_classes = [JWTAuthentication] # Explicitly set authentication
+    serializer_class = BusinessAccountProfileRegistrationSerializer
 
     def get_object(self):
-        return self.request.user
+        # Assuming request.user will be a BusinessAccount instance if authenticated via JWT
+        business_account = self.request.user
+        if not isinstance(business_account, BusinessAccount):
+            raise InvalidToken("Invalid token for Business Account.") # Or a custom exception
+        return business_account
 
     def perform_update(self, serializer):
         business_account = serializer.save()
@@ -367,16 +371,15 @@ class BusinessAccountProfileRegistrationView(generics.UpdateAPIView):
             business_account.save(update_fields=['is_profile_complete'])
 
 
-from .backends import BusinessAccountAuthentication
-from rest_framework.permissions import IsAuthenticated
-
 class BusinessAccountProfileView(APIView):
-    authentication_classes = [BusinessAccountAuthentication]
     permission_classes = [IsAuthenticated]
+    authentication_classes = [JWTAuthentication] # Explicitly set authentication
     serializer_class = BusinessAccountProfileSerializer
 
     def get(self, request):
         business_account = request.user
+        if not isinstance(business_account, BusinessAccount):
+            return standard_response(success=False, message="Unauthorized access.", status_code=status.HTTP_403_FORBIDDEN)
         
         serializer = self.serializer_class(business_account)
         return standard_response(
@@ -388,6 +391,8 @@ class BusinessAccountProfileView(APIView):
 
     def put(self, request):
         business_account = request.user
+        if not isinstance(business_account, BusinessAccount):
+            return standard_response(success=False, message="Unauthorized access.", status_code=status.HTTP_403_FORBIDDEN)
         
         serializer = self.serializer_class(business_account, data=request.data)
         if serializer.is_valid():
@@ -407,6 +412,8 @@ class BusinessAccountProfileView(APIView):
     
     def patch(self, request):
         business_account = request.user
+        if not isinstance(business_account, BusinessAccount):
+            return standard_response(success=False, message="Unauthorized access.", status_code=status.HTTP_403_FORBIDDEN)
         
         serializer = self.serializer_class(business_account, data=request.data, partial=True)
         if serializer.is_valid():
@@ -423,9 +430,6 @@ class BusinessAccountProfileView(APIView):
             errors=serializer.errors,
             status_code=status.HTTP_400_BAD_REQUEST
         )
-
-
-
 
 
 class CustomBusinessTokenRefreshView(TokenRefreshView):

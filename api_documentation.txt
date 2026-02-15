@@ -254,7 +254,7 @@ The API returns responses in a standardized format:
       "email": "user@example.com"
   }
   ```
-- **Success Response (200 OK):**
+- **Success Response (200 OK):`
   ```json
   {
       "success": true,
@@ -529,3 +529,223 @@ These endpoints are designed for compliance with data privacy regulations. They 
   - **Endpoint:** `verify-profile-data-deletion/<uuid:token>/`
   - **Method:** `GET`
   - **Description:** Anonymizes the user's profile data upon verification.
+---
+
+## API Documentation for the `posts` app.
+
+This document provides details on the API endpoints available in the `posts` app, including request and response formats.
+
+---
+
+## Base URL
+
+The base URL for all endpoints in the `posts` app is `/api/posts/`.
+
+---
+
+## Authentication
+
+All endpoints in the `posts` app that allow creation, update, or deletion of posts require authentication. They expect a JSON Web Token (JWT) in the `Authorization` header:
+
+`Authorization: Bearer <access_token>`
+
+---
+
+## API Endpoints
+
+### 1. Need Posts List and Create
+
+- **Endpoint:** `needs/`
+- **Methods:** `GET`, `POST`
+- **Description:**
+  - `GET`: Retrieves a list of all Need posts.
+  - `POST`: Creates a new Need post.
+- **Authentication:** `GET` is not required, `POST` is required.
+- **Request Body (`POST`):**
+  ```json
+  {
+      "title": "Need help with Django project",
+      "description": "Looking for a Django developer to help with a new feature.",
+      "tags": [{"name": "Django"}, {"name": "Python"}],
+      "images": [{"image": "base64_encoded_image_string", "caption": "Project screenshot"}]
+  }
+  ```
+- **Success Response (200 OK for GET, 201 Created for POST):**
+  ```json
+  {
+      "success": true,
+      "message": "Need posts retrieved/created successfully",
+      "data": {
+          "id": "a_uuid",
+          "author_id": "author_uuid",
+          "author_type": "user", // or "business_account"
+          "title": "Need help with Django project",
+          "description": "Looking for a Django developer to help with a new feature.",
+          "tags": [{"id": 1, "name": "Django"}, {"id": 2, "name": "Python"}],
+          "images": [{"id": "image_uuid", "image": "/media/post_images/...", "caption": "Project screenshot"}],
+          "created_at": "2026-02-16T10:00:00Z",
+          "updated_at": "2026-02-16T10:00:00Z"
+      }
+  }
+  ```
+- **Error Response (400 Bad Request):**
+  ```json
+  {
+      "success": false,
+      "message": "Need post creation failed",
+      "errors": {
+          "title": ["This field is required."]
+      }
+  }
+  ```
+
+### 2. Need Post Retrieve, Update, and Delete
+
+- **Endpoint:** `needs/<uuid:pk>/`
+- **Methods:** `GET`, `PUT`, `PATCH`, `DELETE`
+- **Description:**
+  - `GET`: Retrieves a specific Need post.
+  - `PUT`: Fully updates a specific Need post.
+  - `PATCH`: Partially updates a specific Need post.
+  - `DELETE`: Deletes a specific Need post.
+- **Authentication:** `GET` is not required, `PUT`, `PATCH`, `DELETE` are required (and only by the author).
+- **Request Body (`PUT`, `PATCH`):** Same as `POST` for Need Posts, but `id` is not included.
+- **Success Response (200 OK for GET/PUT/PATCH, 204 No Content for DELETE):**
+  ```json
+  {
+      "success": true,
+      "message": "Need post retrieved/updated/deleted successfully",
+      "data": { ... } // Same as Need Posts List and Create success response for GET/PUT/PATCH
+  }
+  ```
+- **Error Response (400 Bad Request, 403 Forbidden, 404 Not Found):**
+  ```json
+  {
+      "success": false,
+      "message": "Error message",
+      "errors": { ... }
+  }
+  ```
+
+### 3. Offer Posts List and Create
+
+- **Endpoint:** `offers/`
+- **Methods:** `GET`, `POST`
+- **Description:**
+  - `GET`: Retrieves a list of all Offer posts.
+  - `POST`: Creates a new Offer post.
+- **Authentication:** `GET` is not required, `POST` is required.
+- **Request Body (`POST`):**
+  ```json
+  {
+      "title": "Offer Web Development Services",
+      "description": "Experienced web developer offering services.",
+      "category": "service",
+      "price_range": "$500-$1000",
+      "delivery_time": "7_days",
+      "tags": [{"name": "Web Development"}, {"name": "Frontend"}],
+      "images": [{"image": "base64_encoded_image_string", "caption": "Portfolio screenshot"}]
+  }
+  ```
+- **Success Response (200 OK for GET, 201 Created for POST):**
+  ```json
+  {
+      "success": true,
+      "message": "Offer posts retrieved/created successfully",
+      "data": {
+          "id": "a_uuid",
+          "author_id": "author_uuid",
+          "author_type": "business_account", // or "user"
+          "title": "Offer Web Development Services",
+          "description": "Experienced web developer offering services.",
+          "category": "service",
+          "price_range": "$500-$1000",
+          "delivery_time": "7_days",
+          "tags": [{"id": 3, "name": "Web Development"}, {"id": 4, "name": "Frontend"}],
+          "images": [{"id": "image_uuid", "image": "/media/post_images/...", "caption": "Portfolio screenshot"}],
+          "created_at": "2026-02-16T10:00:00Z",
+          "updated_at": "2026-02-16T10:00:00Z"
+      }
+  }
+  ```
+- **Error Response (400 Bad Request):**
+  ```json
+  {
+      "success": false,
+      "message": "Offer post creation failed",
+      "errors": {
+          "category": ["This field is required."]
+      }
+  }
+  ```
+
+### 4. Offer Post Retrieve, Update, and Delete
+
+- **Endpoint:** `offers/<uuid:pk>/`
+- **Methods:** `GET`, `PUT`, `PATCH`, `DELETE`
+- **Description:**
+  - `GET`: Retrieves a specific Offer post.
+  - `PUT`: Fully updates a specific Offer post.
+  - `PATCH`: Partially updates a specific Offer post.
+  - `DELETE`: Deletes a specific Offer post.
+- **Authentication:** `GET` is not required, `PUT`, `PATCH`, `DELETE` are required (and only by the author).
+- **Request Body (`PUT`, `PATCH`):** Same as `POST` for Offer Posts, but `id` is not included.
+- **Success Response (200 OK for GET/PUT/PATCH, 204 No Content for DELETE):**
+  ```json
+  {
+      "success": true,
+      "message": "Offer post retrieved/updated/deleted successfully",
+      "data": { ... } // Same as Offer Posts List and Create success response for GET/PUT/PATCH
+  }
+  ```
+- **Error Response (400 Bad Request, 403 Forbidden, 404 Not Found):**
+  ```json
+  {
+      "success": false,
+      "message": "Error message",
+      "errors": { ... }
+  }
+  ```
+
+### 5. All Posts List
+
+- **Endpoint:** `all/`
+- **Method:** `GET`
+- **Description:** Retrieves a combined list of all Need and Offer posts, ordered by creation date (newest first).
+- **Authentication:** Required.
+- **Success Response (200 OK):**
+  ```json
+  {
+      "success": true,
+      "message": "All posts retrieved successfully",
+      "data": [
+          {
+              "id": "a_uuid",
+              "author_id": "author_uuid",
+              "author_type": "user",
+              "title": "Offer Web Development Services",
+              "description": "Experienced web developer offering services.",
+              "tags": [{"id": 3, "name": "Web Development"}],
+              "images": [{"id": "image_uuid", "image": "/media/post_images/...", "caption": "Portfolio screenshot"}],
+              "created_at": "2026-02-16T10:00:00Z",
+              "updated_at": "2026-02-16T10:00:00Z",
+              "post_type": "offer",
+              "category": "service",
+              "price_range": "$500-$1000",
+              "delivery_time": "7_days"
+          },
+          {
+              "id": "another_uuid",
+              "author_id": "another_author_uuid",
+              "author_type": "business_account",
+              "title": "Need help with Django project",
+              "description": "Looking for a Django developer to help with a new feature.",
+              "tags": [{"id": 1, "name": "Django"}],
+              "images": [],
+              "created_at": "2026-02-16T09:30:00Z",
+              "updated_at": "2026-02-16T09:30:00Z",
+              "post_type": "need"
+          }
+      ]
+  }
+  ```

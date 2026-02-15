@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'users',
     'legal_pages',
     'business_account',
+    'posts',
     # Third-party apps
     'rest_framework',
     'rest_framework_simplejwt',
@@ -125,6 +126,10 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+# Media files (user-uploaded content)
+MEDIA_URL = 'media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
 # Custom User Model
 AUTH_USER_MODEL = 'users.User'
 
@@ -171,5 +176,5 @@ SIMPLE_JWT = {
 }
 
 # Crross-Origin Resource Sharing (CORS) settings
-CORS_ALLOWED_ORIGINS = ["https://nonlyric-elliot-bridally.ngrok-free.dev"]
+CORS_ALLOWED_ORIGINS = ["nonlyric-elliot-bridally.ngrok-free.dev"]
 CORS_ALLOW_CREDENTIALS = True
