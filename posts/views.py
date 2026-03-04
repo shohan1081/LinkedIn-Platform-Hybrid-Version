@@ -55,6 +55,13 @@ class NeedPostListCreateView(generics.ListCreateAPIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        tag_name = self.request.query_params.get('tag')
+        if tag_name:
+            queryset = queryset.filter(tags__name=tag_name.lower())
+        return queryset
+
     def perform_create(self, serializer):
         user = self.request.user
         if isinstance(user, User):
@@ -142,6 +149,13 @@ class OfferPostListCreateView(generics.ListCreateAPIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        tag_name = self.request.query_params.get('tag')
+        if tag_name:
+            queryset = queryset.filter(tags__name=tag_name.lower())
+        return queryset
+
     def perform_create(self, serializer):
         user = self.request.user
         if isinstance(user, User):
@@ -221,18 +235,46 @@ class OfferPostRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
 
 # Combined Posts List View
 class UserAndBusinessPostsListView(generics.ListAPIView):
+    """
+    API endpoint to retrieve a feed of posts.
+    - Regular users see all NeedPosts and OfferPosts.
+    - Business accounts see all NeedPosts and only their own OfferPosts.
+    - Supports 'tag' query parameter for filtering.
+    """
     serializer_class = UserAndBusinessPostListSerializer
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        # Apply prefetch_related to each queryset before combining
-        need_posts = NeedPost.objects.all().prefetch_related('images', 'tags')
-        offer_posts = OfferPost.objects.all().prefetch_related('images', 'tags')
+        user = self.request.user
+        tag_name = self.request.query_params.get('tag')
+        
+        # Base querysets with prefetching
+        need_posts_qs = NeedPost.objects.all().prefetch_related('images', 'tags')
+        
+        if isinstance(user, BusinessAccount):
+            # Business accounts see ALL NeedPosts
+            need_posts_qs = need_posts_qs
+            
+            # Business accounts see ONLY THEIR OWN OfferPosts
+            business_content_type = ContentType.objects.get_for_model(BusinessAccount)
+            offer_posts_qs = OfferPost.objects.filter(
+                author_content_type=business_content_type,
+                author_object_id=user.id
+            ).prefetch_related('images', 'tags')
+        else:
+            # Regular User sees everything
+            need_posts_qs = need_posts_qs
+            offer_posts_qs = OfferPost.objects.all().prefetch_related('images', 'tags')
+
+        # Apply tag filter if provided
+        if tag_name:
+            need_posts_qs = need_posts_qs.filter(tags__name=tag_name.lower())
+            offer_posts_qs = offer_posts_qs.filter(tags__name=tag_name.lower())
         
         # Combine and order by created_at
         queryset = sorted(
-            list(need_posts) + list(offer_posts),
+            list(need_posts_qs) + list(offer_posts_qs),
             key=lambda post: post.created_at,
             reverse=True
         )
