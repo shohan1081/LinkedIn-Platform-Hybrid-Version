@@ -54,6 +54,23 @@ class Post(models.Model):
         return self.title
 
 class NeedPost(Post):
+    CATEGORY_CHOICES = [
+        ('technology', 'Technology'),
+        ('logistic', 'Logistic'),
+        ('marketing', 'Marketing'),
+        ('legal', 'Legal'),
+        ('suply_chain', 'Suply Chain'),
+        ('finance', 'Finance'),
+        ('design', 'Design'),
+        ('other', 'Other'),
+    ]
+
+    category = models.CharField(
+        max_length=50,
+        choices=CATEGORY_CHOICES,
+        help_text=_("Required category for the need post")
+    )
+
     class Meta:
         verbose_name = _("Need Post")
         verbose_name_plural = _("Need Posts")
