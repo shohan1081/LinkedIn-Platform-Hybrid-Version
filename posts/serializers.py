@@ -25,16 +25,20 @@ class BasePostSerializer(serializers.ModelSerializer):
     # Nested ImageSerializer for output (read-only)
     images = ImageSerializer(many=True, read_only=True)
 
-    # tags_input for comma-separated input (write_only)
-    tags_input = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    # tags for list input (write_only) - as per LinkedIn style
+    tags = serializers.ListField(
+        child=serializers.CharField(),
+        write_only=True,
+        required=False
+    )
     # TagSerializer for output (read_only)
-    tags = TagSerializer(many=True, read_only=True)
+    tags_detail = TagSerializer(many=True, read_only=True, source='tags')
 
     class Meta:
         model = NeedPost # This will be overridden by subclasses (NeedPostSerializer, OfferPostSerializer)
         fields = [
             'id', 'author_id', 'author_type', 'title', 'description', 
-            'tags_input', 'tags', 'images', 'created_at', 'updated_at'
+            'tags', 'tags_detail', 'images', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'author_id', 'author_type', 'created_at', 'updated_at']
 
@@ -48,19 +52,18 @@ class BasePostSerializer(serializers.ModelSerializer):
             return 'business_account'
         return None
 
-    def _handle_tags(self, tags_string, post_instance):
-        post_instance.tags.clear() 
-        if tags_string:
-            tag_names = [name.strip() for name in tags_string.split(',') if name.strip()]
-            for tag_name in tag_names:
-                tag, _ = Tag.objects.get_or_create(name=tag_name)
-                post_instance.tags.add(tag)
+    def _handle_tags(self, tag_names, post_instance):
+        if tag_names is not None:
+            tag_objects = []
+            for name in tag_names:
+                if name.strip():
+                    tag, _ = Tag.objects.get_or_create(name=name.strip().lower())
+                    tag_objects.append(tag)
+            post_instance.tags.set(tag_objects)
 
     def create(self, validated_data):
-        # We need to explicitly handle files and nested objects from initial_data or request.FILES
-        # Remove 'images' and 'tags_input' from validated_data as we handle them manually
-        validated_data.pop('images', None) # Already popped by serializer from initial_data, but good to be safe
-        tags_input_string = validated_data.pop('tags_input', '')
+        # Remove 'tags' from validated_data as we handle them manually
+        tag_names = validated_data.pop('tags', [])
         
         request = self.context.get('request')
         if not request or not request.user.is_authenticated:
@@ -79,7 +82,6 @@ class BasePostSerializer(serializers.ModelSerializer):
 
         # Manually handle images from request.FILES
         uploaded_images = request.FILES.getlist('images')
-        # Assuming captions are passed as 'images_caption' in form-data if multiple images
         uploaded_captions = request.data.getlist('images_caption') if request.data.getlist('images_caption') else [''] * len(uploaded_images)
 
         for i, uploaded_file in enumerate(uploaded_images):
@@ -91,21 +93,19 @@ class BasePostSerializer(serializers.ModelSerializer):
                 caption=caption
             )
         
-        self._handle_tags(tags_input_string, post)
+        self._handle_tags(tag_names, post)
         
         return post
 
     def update(self, instance, validated_data):
-        # Remove 'images' and 'tags_input' from validated_data as we handle them manually
-        validated_data.pop('images', None)
-        tags_input_string = validated_data.pop('tags_input', None)
+        # Remove 'tags' from validated_data as we handle them manually
+        tag_names = validated_data.pop('tags', None)
         
         request = self.context.get('request')
 
         instance = super().update(instance, validated_data)
 
         # Manually handle images from request.FILES if 'images' key was present in the request
-        # Check if user explicitly sent 'images' either as file(s) or just the key to clear
         if 'images' in request.FILES or ('images' in request.data and not request.FILES.getlist('images')):
             Image.objects.filter(
                 post_content_type=ContentType.objects.get_for_model(instance),
@@ -124,15 +124,15 @@ class BasePostSerializer(serializers.ModelSerializer):
                     caption=caption
                 )
         
-        if tags_input_string is not None:
-            self._handle_tags(tags_input_string, instance)
+        if tag_names is not None:
+            self._handle_tags(tag_names, instance)
 
         return instance
 
 class NeedPostSerializer(BasePostSerializer):
     class Meta(BasePostSerializer.Meta):
         model = NeedPost
-        fields = BasePostSerializer.Meta.fields + [] 
+        fields = BasePostSerializer.Meta.fields + ['category']
 
 class OfferPostSerializer(BasePostSerializer):
     class Meta(BasePostSerializer.Meta):
@@ -145,14 +145,16 @@ class UserAndBusinessPostListSerializer(serializers.Serializer):
     author_type = serializers.SerializerMethodField()
     title = serializers.CharField(read_only=True)
     description = serializers.CharField(read_only=True)
-    tags = TagSerializer(many=True, read_only=True)
+    tags_detail = TagSerializer(many=True, read_only=True, source='tags')
     images = ImageSerializer(many=True, read_only=True)
     created_at = serializers.DateTimeField(read_only=True)
     updated_at = serializers.DateTimeField(read_only=True)
     
+    # Common field
+    category = serializers.CharField(read_only=True)
+
     # Specific fields for OfferPost
     post_type = serializers.SerializerMethodField()
-    category = serializers.CharField(read_only=True)
     price_range = serializers.CharField(read_only=True)
     delivery_time = serializers.CharField(read_only=True)
 
@@ -177,7 +179,6 @@ class UserAndBusinessPostListSerializer(serializers.Serializer):
         representation = super().to_representation(instance)
         if isinstance(instance, NeedPost):
             # Remove OfferPost specific fields for NeedPost
-            representation.pop('category', None)
             representation.pop('price_range', None)
             representation.pop('delivery_time', None)
         return representation
