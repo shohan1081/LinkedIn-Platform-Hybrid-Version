@@ -32,6 +32,8 @@ class BusinessAccount(AbstractBaseUser, PermissionsMixin):
     role_position = models.CharField(_('role/position'), max_length=150, blank=True, null=True)
     business_name = models.CharField(_('business name'), max_length=255, blank=True, null=True)
     industry_category = models.CharField(_('industry/category'), max_length=150, blank=True, null=True)
+    business_email = models.EmailField(_('business email'), max_length=255, blank=True, null=True)
+    website = models.URLField(_('website'), max_length=255, blank=True, null=True)
     address = models.CharField(max_length=255, blank=True, null=True)
     address_line_2 = models.CharField(max_length=255, blank=True, null=True)
     city = models.CharField(max_length=100, blank=True, null=True)
