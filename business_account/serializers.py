@@ -210,6 +210,7 @@ class BusinessAccountProfileRegistrationSerializer(serializers.ModelSerializer):
         model = BusinessAccount
         fields = [
             'role_position', 'business_name', 'industry_category',
+            'business_email', 'website',
             'address', 'address_line_2', 'city', 'state', 'zip_code'
         ]
 
@@ -222,6 +223,7 @@ class BusinessAccountProfileSerializer(serializers.ModelSerializer):
         model = BusinessAccount
         fields = [
             'id', 'email', 'role_position', 'business_name', 'industry_category',
+            'business_email', 'website',
             'address', 'address_line_2', 'city', 'state', 'zip_code',
             'is_email_verified', 'is_profile_complete', 'date_joined', 'last_login', 'updated_at'
         ]
