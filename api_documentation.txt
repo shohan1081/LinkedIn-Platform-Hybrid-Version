@@ -1,12 +1,12 @@
-API Documentation for the `users` app.
+API Documentation for the Business Connection Platform
 
-This document provides details on the API endpoints available in the `users` app, including request and response formats.
+This document provides details on the API endpoints available in the system, including request and response formats.
 
 ---
 
 ## Base URL
 
-The base URL for all endpoints is `/api/users/`.
+The base URL for the API is `/api/`.
 
 ---
 
@@ -42,710 +42,102 @@ The API returns responses in a standardized format:
 
 ---
 
-## API Endpoints
+## Users API (`/api/users/`)
 
 ### 1. User Registration
-
 - **Endpoint:** `signup/`
 - **Method:** `POST`
 - **Description:** Registers a new user.
-- **Authentication:** Not required.
-- **Request Body:**
-  ```json
-  {
-      "email": "user@example.com",
-      "password": "Password123!",
-      "confirm_password": "Password123!"
-  }
-  ```
-- **Success Response (201 Created):**
-  ```json
-  {
-      "success": true,
-      "message": "Registration successful. Please check your email for the OTP to verify your account.",
-      "data": {
-          "user": {
-              "id": "a_uuid",
-              "email": "user@example.com",
-              "is_email_verified": false
-          }
-      }
-  }
-  ```
-- **Error Response (400 Bad Request):**
-  ```json
-  {
-      "success": false,
-      "message": "Registration failed",
-      "errors": {
-          "email": ["An account with this email already exists."],
-          "password": ["Password must contain at least one uppercase letter."]
-      }
-  }
-  ```
 
 ### 2. User Login
-
 - **Endpoint:** `login/`
 - **Method:** `POST`
-- **Description:** Authenticates a user and returns JWT tokens.
-- **Authentication:** Not required.
-- **Request Body:**
-  ```json
-  {
-      "email": "user@example.com",
-      "password": "Password123!"
-  }
-  ```
-- **Success Response (200 OK):**
-  ```json
-  {
-      "success": true,
-      "message": "Login successful",
-      "data": {
-          "user": {
-              "id": "a_uuid",
-              "email": "user@example.com",
-              "first_name": "John",
-              "last_name": "Doe",
-              "is_email_verified": true,
-              "profile_picture": null
-          },
-          "tokens": {
-              "access": "access_token",
-              "refresh": "refresh_token"
-          }
-      }
-  }
-  ```
-- **Error Response (401 Unauthorized):**
-  ```json
-  {
-      "success": false,
-      "message": "Login failed",
-      "errors": {
-          "detail": "Invalid email or password"
-      }
-  }
-  ```
 
-### 3. User Logout
-
-- **Endpoint:** `logout/`
-- **Method:** `POST`
-- **Description:** Blacklists the user's refresh token to log them out.
-- **Authentication:** Required.
-- **Request Body:**
-  ```json
-  {
-      "refresh": "refresh_token"
-  }
-  ```
-- **Success Response (200 OK):**
-  ```json
-  {
-      "success": true,
-      "message": "Logout successful"
-  }
-  ```
-- **Error Response (400 Bad Request):**
-  ```json
-  {
-      "success": false,
-      "message": "Refresh token is required"
-  }
-  ```
-
-### 4. User Profile Completion
-- **Endpoint:** `profile-complete/`
-- **Method:** `PUT` or `PATCH`
-- **Description:** Updates user profile information after registration. This is intended to be used to complete the user's profile with address and other details not collected at sign-up.
-- **Authentication:** Required. The user must be logged in.
-- **Request Body:**
-  ```json
-  {
-    "first_name": "John",
-    "last_name": "Doe",
-    "date_of_birth": "1990-01-15",
-    "address": "123 Main St",
-    "address_line_2": "Apt 4B",
-    "city": "Anytown",
-    "state": "CA",
-    "zip_code": "12345"
-  }
-  ```
-- **Success Response (200 OK):**
-  ```json
-  {
-    "success": true,
-    "message": "Profile updated successfully.",
-    "data": {
-        "first_name": "John",
-        "last_name": "Doe",
-        "date_of_birth": "1990-01-15",
-        "address": "123 Main St",
-        "address_line_2": "Apt 4B",
-        "city": "Anytown",
-        "state": "CA",
-        "zip_code": "12345"
-    }
-  }
-  ```
-- **Error Response (400 Bad Request):**
-  ```json
-  {
-    "success": false,
-    "message": "Profile update failed",
-    "errors": {
-      "date_of_birth": ["You must be at least 13 years old."],
-      "zip_code": ["Enter a valid zip code."]
-    }
-  }
-  ```
-
-### 4. Verify OTP
-
-- **Endpoint:** `verify-otp/`
-- **Method:** `POST`
-- **Description:** Verifies the OTP sent to the user's email and logs them in.
-- **Authentication:** Not required.
-- **Request Body:**
-  ```json
-  {
-      "email": "user@example.com",
-      "otp": "1234"
-  }
-  ```
-- **Success Response (200 OK):**
-  ```json
-  {
-      "success": true,
-      "message": "OTP verified successfully. User is now logged in.",
-      "data": {
-          "user": {
-              "id": "a_uuid",
-              "email": "user@example.com",
-              "is_email_verified": true
-          },
-          "tokens": {
-              "access": "access_token",
-              "refresh": "refresh_token"
-          }
-      }
-  }
-  ```
-- **Error Response (400 Bad Request):**
-  ```json
-  {
-      "success": false,
-      "message": "Invalid or expired OTP."
-  }
-  ```
-
-### 5. Resend OTP
-
-- **Endpoint:** `resend-otp/`
-- **Method:** `POST`
-- **Description:** Resends the OTP to the user's email.
-- **Authentication:** Not required.
-- **Request Body:**
-  ```json
-  {
-      "email": "user@example.com"
-  }
-  ```
-- **Success Response (200 OK):`
-  ```json
-  {
-      "success": true,
-      "message": "OTP has been resent to your email."
-  }
-  ```
-- **Error Response (400 Bad Request):**
-  ```json
-  {
-      "success": false,
-      "message": "User is already active."
-  }
-  ```
-
-### 6. Password Reset Request
-
-- **Endpoint:** `password-reset/`
-- **Method:** `POST`
-- **Description:** Initiates the password reset process by sending an OTP.
-- **Authentication:** Not required.
-- **Request Body:**
-  ```json
-  {
-      "email": "user@example.com"
-  }
-  ```
-- **Success Response (200 OK):**
-  ```json
-  {
-      "success": true,
-      "message": "If an account with that email exists, an OTP has been sent."
-  }
-  ```
-
-### 7. Password Reset OTP Verification
-
-- **Endpoint:** `password-reset-otp-verify/`
-- **Method:** `POST`
-- **Description:** Verifies the OTP for password reset.
-- **Authentication:** Not required.
-- **Request Body:**
-  ```json
-  {
-      "email": "user@example.com",
-      "otp": "1234"
-  }
-  ```
-- **Success Response (200 OK):**
-  ```json
-  {
-      "success": true,
-      "message": "OTP verified successfully. You can now reset your password."
-  }
-  ```
-
-### 8. Password Reset Confirm
-
-- **Endpoint:** `password-reset-confirm/`
-- **Method:** `POST`
-- **Description:** Sets a new password after OTP verification.
-- **Authentication:** Not required.
-- **Request Body:**
-  ```json
-  {
-      "email": "user@example.com",
-      "password": "NewPassword123!",
-      "confirm_password": "NewPassword123!"
-  }
-  ```
-- **Success Response (200 OK):**
-  ```json
-  {
-      "success": true,
-      "message": "Password has been reset successfully. You can now login with your new password."
-  }
-  ```
-
-### 9. Password Change
-
-- **Endpoint:** `password-change/`
-- **Method:** `POST`
-- **Description:** Allows an authenticated user to change their password.
-- **Authentication:** Required.
-- **Request Body:**
-  ```json
-  {
-      "old_password": "OldPassword123!",
-      "new_password": "NewPassword123!",
-      "confirm_password": "NewPassword123!"
-  }
-  ```
-- **Success Response (200 OK):**
-  ```json
-  {
-      "success": true,
-      "message": "Password changed successfully"
-  }
-  ```
-
-### 10. User Profile
-
+### 3. User Profile
 - **Endpoint:** `profile/`
 - **Methods:** `GET`, `PUT`, `PATCH`
-- **Description:**
-  - `GET`: Retrieves the user's profile.
-  - `PUT`: Updates the entire user profile.
-  - `PATCH`: Partially updates the user profile.
-- **Authentication:** Required.
-- **Request Body (`PUT`, `PATCH`):**
-  ```json
-  {
-      "first_name": "John",
-      "last_name": "Doe",
-      "date_of_birth": "1990-01-15",
-      "gender": "male",
-      "occupation": "Software Engineer",
-      "country": "USA",
-      "bio": "A short bio about the user.",
-      "profile_picture": "(file upload)",
-      "cover_photo": "(file upload)"
-  }
-  ```
-- **Success Response (200 OK):**
-  ```json
-  {
-      "success": true,
-      "message": "Profile retrieved/updated successfully",
-      "data": {
-          "id": "a_uuid",
-          "email": "user@example.com",
-          "first_name": "John",
-          "last_name": "Doe",
-          "date_of_birth": "1990-01-15",
-          "gender": "male",
-          "occupation": "Software Engineer",
-          "country": "USA",
-          "age": 36,
-          "bio": "A short bio about the user.",
-          "profile_picture": "/media/profile_pictures/...",
-          "cover_photo": "/media/cover_photos/...",
-          "is_email_verified": true,
-          "is_subscribed": false,
-          "date_joined": "...",
-          "last_login": "..."
-      }
-  }
-  ```
 
-### 11. Account Deletion
+*(Refer to existing documentation for other user endpoints like OTP, Password Reset, etc.)*
 
-- **Endpoint:** `account-delete/`
-- **Method:** `DELETE`
-- **Description:** Deletes the authenticated user's account.
-- **Authentication:** Required.
-- **Request Body:**
-  ```json
-  {
-      "password": "Password123!",
-      "confirm_deletion": true
-  }
-  ```
-- **Success Response (200 OK):**
-  ```json
-  {
-      "success": true,
-      "message": "Account deleted successfully"
-  }
-  ```
+---
 
-### 12. Token Refresh
+## Business Account API (`/api/business-account/`)
 
-- **Endpoint:** `token/refresh/`
+### 1. Registration
+- **Endpoint:** `signup/`
 - **Method:** `POST`
-- **Description:** Refreshes an expired access token.
-- **Authentication:** Not required.
-- **Request Body:**
-  ```json
-  {
-      "refresh": "refresh_token"
-  }
-  ```
-- **Success Response (200 OK):**
-  ```json
-  {
-      "success": true,
-      "message": "Token refreshed successfully",
-      "data": {
-          "access": "new_access_token"
-      }
-  }
-  ```
 
-### 13. Token Verify
-
-- **Endpoint:** `token/verify/`
+### 2. Login
+- **Endpoint:** `login/`
 - **Method:** `POST`
-- **Description:** Verifies an access token.
-- **Authentication:** Not required.
-- **Request Body:**
-  ```json
-  {
-      "token": "access_token"
-  }
-  ```
-- **Success Response (200 OK):**
-  ```json
-  {
-      "success": true,
-      "message": "Token is valid",
-      "data": {
-          "valid": true
-      }
-  }
-  ```
-
-### 14. Set Language
-
-- **Endpoint:** `set-language/`
-- **Method:** `POST`
-- **Description:** Sets the user's preferred language for API responses.
-- **Authentication:** Required.
-- **Request Body:**
-  ```json
-  {
-      "language": "hi"
-  }
-  ```
-- **Success Response (200 OK):**
-  ```json
-  {
-      "success": true,
-      "message": "Language preference updated successfully.",
-      "data": {
-          "language": "hi"
-      }
-  }
-  ```
-
 
 ---
 
-### Account and Profile Data Deletion
+## Posts API (`/api/posts/`)
 
-These endpoints are designed for compliance with data privacy regulations. They are not intended for direct use by most client applications but are available for users to manage their data.
+### 1. Common Post Features
 
-- **Request Account Deletion Form:**
-  - **Endpoint:** `delete-account/`
-  - **Method:** `GET`
-  - **Description:** Renders an HTML form to request account deletion.
+#### Tagging (Social Media Style)
+When creating or updating a post, use the `tags` field with a list of strings. Tags are automatically converted to lowercase.
+- **Input:** `"tags": ["UIUX", "Backend", "Django"]`
+- **Output:** Returns `tags_detail` with full tag objects and `tags` as a list of names.
 
-- **Submit Account Deletion Request:**
-  - **Endpoint:** `delete-account-request/`
-  - **Method:** `POST`
-  - **Description:** Submits the account deletion request. Sends a verification email.
-
-- **Verify Account Deletion:**
-  - **Endpoint:** `verify-account-deletion/<uuid:token>/`
-  - **Method:** `GET`
-  - **Description:** Deletes the account upon verification.
-
-- **Request Profile Data Deletion Form:**
-  - **Endpoint:** `delete-profile-data/`
-  - **Method:** `GET`
-  - **Description:** Renders an HTML form to request profile data deletion.
-
-- **Submit Profile Data Deletion Request:**
-  - **Endpoint:** `delete-profile-data-request/`
-  - **Method:** `POST`
-  - **Description:** Submits the profile data deletion request. Sends a verification email.
-
-- **Verify Profile Data Deletion:**
-  - **Endpoint:** `verify-profile-data-deletion/<uuid:token>/`
-  - **Method:** `GET`
-  - **Description:** Anonymizes the user's profile data upon verification.
----
-
-## API Documentation for the `posts` app.
-
-This document provides details on the API endpoints available in the `posts` app, including request and response formats.
+#### Images
+Images should be uploaded using `multipart/form-data`.
+- **Field Name:** `images` (can be multiple files)
+- **Optional Captions:** `images_caption` (list of strings corresponding to files)
 
 ---
 
-## Base URL
-
-The base URL for all endpoints in the `posts` app is `/api/posts/`.
-
----
-
-## Authentication
-
-All endpoints in the `posts` app that allow creation, update, or deletion of posts require authentication. They expect a JSON Web Token (JWT) in the `Authorization` header:
-
-`Authorization: Bearer <access_token>`
-
----
-
-## API Endpoints
-
-### 1. Need Posts List and Create
+### 2. Need Posts
 
 - **Endpoint:** `needs/`
 - **Methods:** `GET`, `POST`
-- **Description:**
-  - `GET`: Retrieves a list of all Need posts.
-  - `POST`: Creates a new Need post.
-- **Authentication:** `GET` is not required, `POST` is required.
-- **Request Body (`POST`):**
-  ```json
-  {
-      "title": "Need help with Django project",
-      "description": "Looking for a Django developer to help with a new feature.",
-      "tags": [{"name": "Django"}, {"name": "Python"}],
-      "images": [{"image": "base64_encoded_image_string", "caption": "Project screenshot"}]
-  }
-  ```
-- **Success Response (200 OK for GET, 201 Created for POST):**
-  ```json
-  {
-      "success": true,
-      "message": "Need posts retrieved/created successfully",
-      "data": {
-          "id": "a_uuid",
-          "author_id": "author_uuid",
-          "author_type": "user", // or "business_account"
-          "title": "Need help with Django project",
-          "description": "Looking for a Django developer to help with a new feature.",
-          "tags": [{"id": 1, "name": "Django"}, {"id": 2, "name": "Python"}],
-          "images": [{"id": "image_uuid", "image": "/media/post_images/...", "caption": "Project screenshot"}],
-          "created_at": "2026-02-16T10:00:00Z",
-          "updated_at": "2026-02-16T10:00:00Z"
-      }
-  }
-  ```
-- **Error Response (400 Bad Request):**
-  ```json
-  {
-      "success": false,
-      "message": "Need post creation failed",
-      "errors": {
-          "title": ["This field is required."]
-      }
-  }
-  ```
+- **Query Params:** `?tag=tagname` (Filter by tag)
+- **Required Fields (`POST`):**
+  - `title`: string
+  - `description`: string
+  - `category`: string (one of: `technology`, `logistic`, `marketing`, `legal`, `suply_chain`, `finance`, `design`, `other`)
+- **Optional Fields:**
+  - `tags`: list of strings
+  - `images`: file(s)
 
-### 2. Need Post Retrieve, Update, and Delete
+---
 
-- **Endpoint:** `needs/<uuid:pk>/`
-- **Methods:** `GET`, `PUT`, `PATCH`, `DELETE`
-- **Description:**
-  - `GET`: Retrieves a specific Need post.
-  - `PUT`: Fully updates a specific Need post.
-  - `PATCH`: Partially updates a specific Need post.
-  - `DELETE`: Deletes a specific Need post.
-- **Authentication:** `GET` is not required, `PUT`, `PATCH`, `DELETE` are required (and only by the author).
-- **Request Body (`PUT`, `PATCH`):** Same as `POST` for Need Posts, but `id` is not included.
-- **Success Response (200 OK for GET/PUT/PATCH, 204 No Content for DELETE):**
-  ```json
-  {
-      "success": true,
-      "message": "Need post retrieved/updated/deleted successfully",
-      "data": { ... } // Same as Need Posts List and Create success response for GET/PUT/PATCH
-  }
-  ```
-- **Error Response (400 Bad Request, 403 Forbidden, 404 Not Found):**
-  ```json
-  {
-      "success": false,
-      "message": "Error message",
-      "errors": { ... }
-  }
-  ```
-
-### 3. Offer Posts List and Create
+### 3. Offer Posts
 
 - **Endpoint:** `offers/`
 - **Methods:** `GET`, `POST`
-- **Description:**
-  - `GET`: Retrieves a list of all Offer posts.
-  - `POST`: Creates a new Offer post.
-- **Authentication:** `GET` is not required, `POST` is required.
-- **Request Body (`POST`):**
-  ```json
-  {
-      "title": "Offer Web Development Services",
-      "description": "Experienced web developer offering services.",
-      "category": "service",
-      "price_range": "$500-$1000",
-      "delivery_time": "7_days",
-      "tags": [{"name": "Web Development"}, {"name": "Frontend"}],
-      "images": [{"image": "base64_encoded_image_string", "caption": "Portfolio screenshot"}]
-  }
-  ```
-- **Success Response (200 OK for GET, 201 Created for POST):**
-  ```json
-  {
-      "success": true,
-      "message": "Offer posts retrieved/created successfully",
-      "data": {
-          "id": "a_uuid",
-          "author_id": "author_uuid",
-          "author_type": "business_account", // or "user"
-          "title": "Offer Web Development Services",
-          "description": "Experienced web developer offering services.",
-          "category": "service",
-          "price_range": "$500-$1000",
-          "delivery_time": "7_days",
-          "tags": [{"id": 3, "name": "Web Development"}, {"id": 4, "name": "Frontend"}],
-          "images": [{"id": "image_uuid", "image": "/media/post_images/...", "caption": "Portfolio screenshot"}],
-          "created_at": "2026-02-16T10:00:00Z",
-          "updated_at": "2026-02-16T10:00:00Z"
-      }
-  }
-  ```
-- **Error Response (400 Bad Request):**
-  ```json
-  {
-      "success": false,
-      "message": "Offer post creation failed",
-      "errors": {
-          "category": ["This field is required."]
-      }
-  }
-  ```
+- **Query Params:** `?tag=tagname` (Filter by tag)
+- **Required Fields (`POST`):**
+  - `title`: string
+  - `description`: string
+  - `category`: string (one of: `service`, `product`, `event`, `other`)
+- **Optional Fields:**
+  - `price_range`: string
+  - `delivery_time`: string (`night`, `day`, `7_days`, `14_days`)
+  - `tags`: list of strings
+  - `images`: file(s)
 
-### 4. Offer Post Retrieve, Update, and Delete
+---
 
-- **Endpoint:** `offers/<uuid:pk>/`
-- **Methods:** `GET`, `PUT`, `PATCH`, `DELETE`
-- **Description:**
-  - `GET`: Retrieves a specific Offer post.
-  - `PUT`: Fully updates a specific Offer post.
-  - `PATCH`: Partially updates a specific Offer post.
-  - `DELETE`: Deletes a specific Offer post.
-- **Authentication:** `GET` is not required, `PUT`, `PATCH`, `DELETE` are required (and only by the author).
-- **Request Body (`PUT`, `PATCH`):** Same as `POST` for Offer Posts, but `id` is not included.
-- **Success Response (200 OK for GET/PUT/PATCH, 204 No Content for DELETE):**
-  ```json
-  {
-      "success": true,
-      "message": "Offer post retrieved/updated/deleted successfully",
-      "data": { ... } // Same as Offer Posts List and Create success response for GET/PUT/PATCH
-  }
-  ```
-- **Error Response (400 Bad Request, 403 Forbidden, 404 Not Found):**
-  ```json
-  {
-      "success": false,
-      "message": "Error message",
-      "errors": { ... }
-  }
-  ```
-
-### 5. All Posts List
+### 4. Combined Feed (The "Wall")
 
 - **Endpoint:** `all/`
 - **Method:** `GET`
-- **Description:** Retrieves a combined list of all Need and Offer posts, ordered by creation date (newest first).
 - **Authentication:** Required.
-- **Success Response (200 OK):**
-  ```json
-  {
-      "success": true,
-      "message": "All posts retrieved successfully",
-      "data": [
-          {
-              "id": "a_uuid",
-              "author_id": "author_uuid",
-              "author_type": "user",
-              "title": "Offer Web Development Services",
-              "description": "Experienced web developer offering services.",
-              "tags": [{"id": 3, "name": "Web Development"}],
-              "images": [{"id": "image_uuid", "image": "/media/post_images/...", "caption": "Portfolio screenshot"}],
-              "created_at": "2026-02-16T10:00:00Z",
-              "updated_at": "2026-02-16T10:00:00Z",
-              "post_type": "offer",
-              "category": "service",
-              "price_range": "$500-$1000",
-              "delivery_time": "7_days"
-          },
-          {
-              "id": "another_uuid",
-              "author_id": "another_author_uuid",
-              "author_type": "business_account",
-              "title": "Need help with Django project",
-              "description": "Looking for a Django developer to help with a new feature.",
-              "tags": [{"id": 1, "name": "Django"}],
-              "images": [],
-              "created_at": "2026-02-16T09:30:00Z",
-              "updated_at": "2026-02-16T09:30:00Z",
-              "post_type": "need"
-          }
-      ]
-  }
-  ```
+- **Query Params:** `?tag=tagname` (Filter all results by tag)
+- **Behavior:**
+  - **Regular Users:** See all `NeedPosts` and all `OfferPosts` from everyone.
+  - **Business Accounts:** See all `NeedPosts` but **only their own** `OfferPosts`.
+- **Response Data:** Includes a `post_type` field (`need` or `offer`) to distinguish posts.
+
+---
+
+### 5. Post Detail (Retrieve, Update, Delete)
+
+- **Endpoints:** 
+  - `needs/<uuid:pk>/`
+  - `offers/<uuid:pk>/`
+- **Methods:** `GET`, `PUT`, `PATCH`, `DELETE`
+- **Permissions:** Only the author can update or delete a post.
