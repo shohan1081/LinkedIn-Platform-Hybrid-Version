@@ -364,6 +364,25 @@ class BusinessAccountProfileRegistrationView(generics.UpdateAPIView):
             raise InvalidToken("Invalid token for Business Account.") # Or a custom exception
         return business_account
 
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        if serializer.is_valid():
+            self.perform_update(serializer)
+            return standard_response(
+                success=True,
+                message="Business profile registration completed successfully",
+                data=serializer.data,
+                status_code=status.HTTP_200_OK
+            )
+        return standard_response(
+            success=False,
+            message="Profile registration failed",
+            errors=serializer.errors,
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+
     def perform_update(self, serializer):
         business_account = serializer.save()
         if not business_account.is_profile_complete:
