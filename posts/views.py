@@ -2,16 +2,18 @@ from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework_simplejwt.authentication import JWTAuthentication
+from business_account.backends import BusinessAccountAuthentication, MultiModelJWTAuthentication
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.db.models import Q
 from django.contrib.contenttypes.models import ContentType
 
-from .models import NeedPost, OfferPost, Tag, Image
+from .models import NeedPost, OfferPost, Tag, Image, NeedPostProposal
 from .serializers import (
     NeedPostSerializer,
     OfferPostSerializer,
     UserAndBusinessPostListSerializer,
     TagSerializer,
+    NeedPostProposalSerializer,
 )
 from users.models import User
 from business_account.models import BusinessAccount
@@ -52,7 +54,7 @@ class TagRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
 class NeedPostListCreateView(generics.ListCreateAPIView):
     queryset = NeedPost.objects.all().prefetch_related('images', 'tags') # Add prefetch_related
     serializer_class = NeedPostSerializer
-    authentication_classes = [JWTAuthentication]
+    authentication_classes = [MultiModelJWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
@@ -103,7 +105,7 @@ class NeedPostListCreateView(generics.ListCreateAPIView):
 class NeedPostRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
     queryset = NeedPost.objects.all().prefetch_related('images', 'tags') # Add prefetch_related
     serializer_class = NeedPostSerializer
-    authentication_classes = [JWTAuthentication]
+    authentication_classes = [MultiModelJWTAuthentication]
     permission_classes = [IsAuthorOrReadOnly]
 
     def retrieve(self, request, *args, **kwargs):
@@ -146,7 +148,7 @@ class NeedPostRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
 class OfferPostListCreateView(generics.ListCreateAPIView):
     queryset = OfferPost.objects.all().prefetch_related('images', 'tags') # Add prefetch_related
     serializer_class = OfferPostSerializer
-    authentication_classes = [JWTAuthentication]
+    authentication_classes = [MultiModelJWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
@@ -196,7 +198,7 @@ class OfferPostListCreateView(generics.ListCreateAPIView):
 class OfferPostRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
     queryset = OfferPost.objects.all().prefetch_related('images', 'tags') # Add prefetch_related
     serializer_class = OfferPostSerializer
-    authentication_classes = [JWTAuthentication]
+    authentication_classes = [MultiModelJWTAuthentication]
     permission_classes = [IsAuthorOrReadOnly]
 
     def retrieve(self, request, *args, **kwargs):
@@ -242,30 +244,16 @@ class UserAndBusinessPostsListView(generics.ListAPIView):
     - Supports 'tag' query parameter for filtering.
     """
     serializer_class = UserAndBusinessPostListSerializer
-    authentication_classes = [JWTAuthentication]
+    authentication_classes = [MultiModelJWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         user = self.request.user
         tag_name = self.request.query_params.get('tag')
         
-        # Base querysets with prefetching
+        # Base querysets with prefetching for both Need and Offer posts
         need_posts_qs = NeedPost.objects.all().prefetch_related('images', 'tags')
-        
-        if isinstance(user, BusinessAccount):
-            # Business accounts see ALL NeedPosts
-            need_posts_qs = need_posts_qs
-            
-            # Business accounts see ONLY THEIR OWN OfferPosts
-            business_content_type = ContentType.objects.get_for_model(BusinessAccount)
-            offer_posts_qs = OfferPost.objects.filter(
-                author_content_type=business_content_type,
-                author_object_id=user.id
-            ).prefetch_related('images', 'tags')
-        else:
-            # Regular User sees everything
-            need_posts_qs = need_posts_qs
-            offer_posts_qs = OfferPost.objects.all().prefetch_related('images', 'tags')
+        offer_posts_qs = OfferPost.objects.all().prefetch_related('images', 'tags')
 
         # Apply tag filter if provided
         if tag_name:
@@ -292,5 +280,109 @@ class UserAndBusinessPostsListView(generics.ListAPIView):
         return standard_response(
             success=True,
             message="All posts retrieved successfully",
+            data=serializer.data
+        )
+
+from rest_framework.parsers import MultiPartParser, FormParser
+
+# Need Post Proposal Views
+class NeedPostProposalCreateView(generics.CreateAPIView):
+    """
+    API endpoint to submit a proposal for a NeedPost.
+    """
+    serializer_class = NeedPostProposalSerializer
+    authentication_classes = [MultiModelJWTAuthentication]
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def create(self, request, *args, **kwargs):
+        need_post_id = self.kwargs.get('pk')
+        try:
+            need_post = NeedPost.objects.get(pk=need_post_id)
+        except NeedPost.DoesNotExist:
+            return standard_response(success=False, message="Need post not found.", status_code=status.HTTP_404_NOT_FOUND)
+
+        # Check if user is the author of the post
+        if need_post.author == request.user:
+            return standard_response(success=False, message="You cannot propose to your own post.", status_code=status.HTTP_400_BAD_REQUEST)
+
+        # Check if already proposed
+        user = request.user
+        if isinstance(user, User):
+            proposer_content_type = ContentType.objects.get_for_model(User)
+        else:
+            proposer_content_type = ContentType.objects.get_for_model(BusinessAccount)
+
+        if NeedPostProposal.objects.filter(need_post=need_post, proposer_content_type=proposer_content_type, proposer_object_id=user.id).exists():
+            return standard_response(success=False, message="You have already submitted a proposal for this post.", status_code=status.HTTP_400_BAD_REQUEST)
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(
+            need_post=need_post,
+            proposer_content_type=proposer_content_type,
+            proposer_object_id=user.id
+        )
+
+        return standard_response(
+            success=True,
+            message="Proposal submitted successfully",
+            data=serializer.data,
+            status_code=status.HTTP_201_CREATED
+        )
+
+class NeedPostProposalCancelView(APIView):
+    """
+    API endpoint to cancel a proposal.
+    """
+    authentication_classes = [MultiModelJWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            proposal = NeedPostProposal.objects.get(pk=pk)
+        except NeedPostProposal.DoesNotExist:
+            return standard_response(success=False, message="Proposal not found.", status_code=status.HTTP_404_NOT_FOUND)
+
+        # Check if the user is the proposer
+        if proposal.proposer != request.user:
+            return standard_response(success=False, message="You are not authorized to cancel this proposal.", status_code=status.HTTP_403_FORBIDDEN)
+
+        if proposal.status == 'cancelled':
+            return standard_response(success=False, message="Proposal is already cancelled.", status_code=status.HTTP_400_BAD_REQUEST)
+
+        proposal.status = 'cancelled'
+        proposal.save()
+
+        return standard_response(success=True, message="Proposal cancelled successfully.")
+
+class NeedPostProposalListView(generics.ListAPIView):
+    """
+    API endpoint to list proposals for a specific NeedPost.
+    Only the author of the post can see all proposals.
+    """
+    serializer_class = NeedPostProposalSerializer
+    authentication_classes = [MultiModelJWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        need_post_id = self.kwargs.get('pk')
+        return NeedPostProposal.objects.filter(need_post_id=need_post_id)
+
+    def list(self, request, *args, **kwargs):
+        need_post_id = self.kwargs.get('pk')
+        try:
+            need_post = NeedPost.objects.get(pk=need_post_id)
+        except NeedPost.DoesNotExist:
+            return standard_response(success=False, message="Need post not found.", status_code=status.HTTP_404_NOT_FOUND)
+
+        if need_post.author != request.user:
+            return standard_response(success=False, message="You are not authorized to view proposals for this post.", status_code=status.HTTP_403_FORBIDDEN)
+
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return standard_response(
+            success=True,
+            message="Proposals retrieved successfully",
             data=serializer.data
         )
