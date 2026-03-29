@@ -60,3 +60,33 @@ class BusinessAccountAuthentication(JWTAuthentication):
             raise AuthenticationFailed(_("User is inactive"), code="user_inactive")
 
         return user
+
+class MultiModelJWTAuthentication(JWTAuthentication):
+    """
+    Custom authentication class that tries to find the user in either
+    BusinessAccount or standard User models.
+    """
+    def get_user(self, validated_token):
+        try:
+            user_id = validated_token["user_id"]
+        except KeyError:
+            raise AuthenticationFailed(_("Token contained no recognizable user identification"), code="user_not_found")
+
+        # First try BusinessAccount
+        try:
+            user = BusinessAccount.objects.get(pk=user_id)
+            if not user.is_active:
+                raise AuthenticationFailed(_("User is inactive"), code="user_inactive")
+            return user
+        except BusinessAccount.DoesNotExist:
+            pass
+
+        # Then try standard User
+        from users.models import User
+        try:
+            user = User.objects.get(pk=user_id)
+            if not user.is_active:
+                raise AuthenticationFailed(_("User is inactive"), code="user_inactive")
+            return user
+        except User.DoesNotExist:
+            raise AuthenticationFailed(_("User not found"), code="user_not_found")

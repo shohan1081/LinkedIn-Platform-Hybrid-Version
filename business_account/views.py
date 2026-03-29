@@ -2,6 +2,7 @@ from rest_framework import status, generics
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework_simplejwt.authentication import JWTAuthentication
+from .backends import BusinessAccountAuthentication
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView, TokenVerifyView
@@ -311,7 +312,7 @@ class PasswordResetConfirmView(APIView):
 
 class PasswordChangeView(APIView):
     permission_classes = [IsAuthenticated]
-    authentication_classes = [JWTAuthentication] # Explicitly set authentication
+    authentication_classes = [BusinessAccountAuthentication] # Explicitly set authentication
     serializer_class = PasswordChangeSerializer
     
     def post(self, request):
@@ -354,7 +355,7 @@ class PasswordChangeView(APIView):
 
 class BusinessAccountProfileRegistrationView(generics.UpdateAPIView):
     permission_classes = [IsAuthenticated]
-    authentication_classes = [JWTAuthentication] # Explicitly set authentication
+    authentication_classes = [BusinessAccountAuthentication] # Explicitly set authentication
     serializer_class = BusinessAccountProfileRegistrationSerializer
 
     def get_object(self):
@@ -392,7 +393,7 @@ class BusinessAccountProfileRegistrationView(generics.UpdateAPIView):
 
 class BusinessAccountProfileView(APIView):
     permission_classes = [IsAuthenticated]
-    authentication_classes = [JWTAuthentication] # Explicitly set authentication
+    authentication_classes = [BusinessAccountAuthentication] # Explicitly set authentication
     serializer_class = BusinessAccountProfileSerializer
 
     def get(self, request):
