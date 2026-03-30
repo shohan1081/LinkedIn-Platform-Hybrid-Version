@@ -71,6 +71,25 @@ The API returns responses in a standardized format:
 - **Endpoint:** `login/`
 - **Method:** `POST`
 
+### 3. Profile Registration (Complete Profile)
+- **Endpoint:** `profile-register/`
+- **Method:** `PATCH` / `PUT`
+- **Authentication:** Required (Business Account Token)
+- **Request Body (JSON):**
+```json
+{
+    "role_position": "CEO",
+    "business_name": "Tech Corp",
+    "industry_category": "Software",
+    "business_email": "contact@techcorp.com",
+    "website": "https://techcorp.com",
+    "address": "123 Main St",
+    "city": "New York",
+    "state": "NY",
+    "zip_code": "10001"
+}
+```
+
 ---
 
 ## Posts API (`/api/posts/`)
@@ -79,8 +98,8 @@ The API returns responses in a standardized format:
 
 #### Tagging (Social Media Style)
 When creating or updating a post, use the `tags` field with a list of strings. Tags are automatically converted to lowercase.
-- **Input:** `"tags": ["UIUX", "Backend", "Django"]`
-- **Output:** Returns `tags_detail` with full tag objects and `tags` as a list of names.
+- **Input:** `"tags": ["UIUX", "Backend"]`
+- **Output:** Returns `tags_detail` with full tag objects.
 
 #### Images
 Images should be uploaded using `multipart/form-data`.
@@ -94,47 +113,141 @@ Images should be uploaded using `multipart/form-data`.
 - **Endpoint:** `needs/`
 - **Methods:** `GET`, `POST`
 - **Query Params:** `?tag=tagname` (Filter by tag)
-- **Required Fields (`POST`):**
-  - `title`: string
-  - `description`: string
-  - `category`: string (one of: `technology`, `logistic`, `marketing`, `legal`, `suply_chain`, `finance`, `design`, `other`)
-- **Optional Fields:**
-  - `tags`: list of strings
-  - `images`: file(s)
+- **Request Body (`POST` - multipart/form-data):**
+  - `title`: "Need a UI Designer"
+  - `description`: "Looking for an expert UI designer for a 3-month project."
+  - `category`: "design" (one of: `technology`, `logistic`, `marketing`, `legal`, `suply_chain`, `finance`, `design`, `other`)
+  - `tags`: ["UIUX", "Figma"] (multiple fields or JSON array)
+  - `images`: (file)
+  - `images_caption`: "Mockup draft"
+
+- **Response Example (`data`):**
+```json
+{
+    "id": "uuid-here",
+    "author_id": "author-uuid",
+    "author_type": "user",
+    "title": "Need a UI Designer",
+    "description": "Looking for an expert UI designer for a 3-month project.",
+    "category": "design",
+    "tags_detail": [
+        {"id": 1, "name": "uiux"},
+        {"id": 2, "name": "figma"}
+    ],
+    "images": [
+        {"image": "/media/post_images/img.jpg", "caption": "Mockup draft"}
+    ],
+    "created_at": "2026-03-29T04:00:00Z",
+    "updated_at": "2026-03-29T04:00:00Z"
+}
+```
 
 ---
 
-### 3. Offer Posts
+### 3. Need Post Proposals
+
+#### Submit a Proposal
+- **Endpoint:** `needs/<uuid:post_id>/propose/`
+- **Method:** `POST`
+- **Authentication:** Required
+- **Request Body (multipart/form-data):**
+  - `subject`: "UI Design Proposal" (Short summary)
+  - `message`: "I can help with your UI design project. I have 5 years of experience." (Text field for cover letter)
+  - `cv_file`: (File upload) Supporting document, CV (PDF or Image)
+- **Constraint:** A user cannot propose to their own post, and can only submit one proposal per post.
+
+#### List Proposals for a Post
+- **Endpoint:** `needs/<uuid:post_id>/proposals/`
+- **Method:** `GET`
+- **Authentication:** Required (Post Author Only)
+
+#### Cancel a Proposal
+- **Endpoint:** `proposals/<int:proposal_id>/cancel/`
+- **Method:** `POST`
+- **Authentication:** Required (Proposer Only)
+
+---
+
+### 4. Offer Posts
 
 - **Endpoint:** `offers/`
 - **Methods:** `GET`, `POST`
 - **Query Params:** `?tag=tagname` (Filter by tag)
-- **Required Fields (`POST`):**
-  - `title`: string
-  - `description`: string
-  - `category`: string (one of: `service`, `product`, `event`, `other`)
-- **Optional Fields:**
-  - `price_range`: string
-  - `delivery_time`: string (`night`, `day`, `7_days`, `14_days`)
-  - `tags`: list of strings
-  - `images`: file(s)
+- **Request Body (`POST` - multipart/form-data):**
+  - `title`: "Professional Web Development"
+  - `description`: "We offer high-quality web development services."
+  - `category`: "service" (one of: `service`, `product`, `event`, `other`)
+  - `price_range`: "$1000 - $5000"
+  - `delivery_time`: "14_days" (one of: `night`, `day`, `7_days`, `14_days`)
+  - `tags`: ["development", "django"]
+  - `images`: (file)
+
+- **Response Example (`data`):**
+```json
+{
+    "id": "uuid-here",
+    "author_id": "author-uuid",
+    "author_type": "business_account",
+    "title": "Professional Web Development",
+    "description": "We offer high-quality web development services.",
+    "category": "service",
+    "price_range": "$1000 - $5000",
+    "delivery_time": "14_days",
+    "tags_detail": [
+        {"id": 3, "name": "development"},
+        {"id": 4, "name": "django"}
+    ],
+    "images": [],
+    "created_at": "2026-03-29T04:00:00Z",
+    "updated_at": "2026-03-29T04:00:00Z"
+}
+```
 
 ---
 
-### 4. Combined Feed (The "Wall")
+### 5. Combined Feed (The "Wall")
 
 - **Endpoint:** `all/`
 - **Method:** `GET`
 - **Authentication:** Required.
 - **Query Params:** `?tag=tagname` (Filter all results by tag)
 - **Behavior:**
-  - **Regular Users:** See all `NeedPosts` and all `OfferPosts` from everyone.
-  - **Business Accounts:** See all `NeedPosts` but **only their own** `OfferPosts`.
-- **Response Data:** Includes a `post_type` field (`need` or `offer`) to distinguish posts.
+  - Shows all `NeedPosts` and all `OfferPosts` from all users (Standard and Business).
+- **Response Example (`data`):**
+```json
+[
+    {
+        "id": "uuid-1",
+        "post_type": "offer",
+        "author_id": "uuid-a",
+        "author_type": "business_account",
+        "title": "Offer Title",
+        "description": "...",
+        "category": "service",
+        "price_range": "$50",
+        "delivery_time": "day",
+        "tags_detail": [...],
+        "images": [...],
+        "created_at": "..."
+    },
+    {
+        "id": "uuid-2",
+        "post_type": "need",
+        "author_id": "uuid-b",
+        "author_type": "user",
+        "title": "Need Title",
+        "description": "...",
+        "category": "technology",
+        "tags_detail": [...],
+        "images": [...],
+        "created_at": "..."
+    }
+]
+```
 
 ---
 
-### 5. Post Detail (Retrieve, Update, Delete)
+### 6. Post Detail (Retrieve, Update, Delete)
 
 - **Endpoints:** 
   - `needs/<uuid:pk>/`
