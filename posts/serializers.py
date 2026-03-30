@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from django.contrib.contenttypes.models import ContentType
-from .models import Tag, Image, NeedPost, OfferPost
+from .models import Tag, Image, NeedPost, OfferPost, NeedPostProposal
 from users.models import User
 from business_account.models import BusinessAccount
 
@@ -182,3 +182,22 @@ class UserAndBusinessPostListSerializer(serializers.Serializer):
             representation.pop('price_range', None)
             representation.pop('delivery_time', None)
         return representation
+
+class NeedPostProposalSerializer(serializers.ModelSerializer):
+    proposer_id = serializers.SerializerMethodField()
+    proposer_type = serializers.SerializerMethodField()
+
+    class Meta:
+        model = NeedPostProposal
+        fields = ['id', 'need_post', 'proposer_id', 'proposer_type', 'subject', 'message', 'cv_file', 'status', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'need_post', 'proposer_id', 'proposer_type', 'status', 'created_at', 'updated_at']
+
+    def get_proposer_id(self, obj):
+        return str(obj.proposer.id) if obj.proposer else None
+
+    def get_proposer_type(self, obj):
+        if isinstance(obj.proposer, User):
+            return 'user'
+        elif isinstance(obj.proposer, BusinessAccount):
+            return 'business_account'
+        return None

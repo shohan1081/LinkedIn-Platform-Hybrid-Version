@@ -75,6 +75,39 @@ class NeedPost(Post):
         verbose_name = _("Need Post")
         verbose_name_plural = _("Need Posts")
 
+class NeedPostProposal(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('accepted', 'Accepted'),
+        ('rejected', 'Rejected'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    need_post = models.ForeignKey(NeedPost, on_delete=models.CASCADE, related_name='proposals')
+    
+    # Proposer can be User or BusinessAccount
+    proposer_content_type = models.ForeignKey(
+        ContentType, 
+        on_delete=models.CASCADE,
+    )
+    proposer_object_id = models.UUIDField()
+    proposer = GenericForeignKey('proposer_content_type', 'proposer_object_id')
+
+    subject = models.CharField(max_length=255, blank=True, null=True, help_text=_("Subject of the proposal"))
+    message = models.TextField(blank=True, null=True, help_text=_("Cover letter or proposal message"))
+    cv_file = models.FileField(upload_to='proposals/cvs/', blank=True, null=True, help_text=_("CV or supporting document (PDF/Image)"))
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('need_post', 'proposer_content_type', 'proposer_object_id')
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Proposal for {self.need_post.title} by {self.proposer}"
+
 class OfferPost(Post):
     CATEGORY_CHOICES = [
         ('service', 'Service'),
