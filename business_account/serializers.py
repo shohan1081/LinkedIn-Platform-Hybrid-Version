@@ -214,6 +214,14 @@ class BusinessAccountProfileRegistrationSerializer(serializers.ModelSerializer):
             'address', 'address_line_2', 'city', 'state', 'zip_code'
         ]
 
+    def validate_website(self, value):
+        """
+        Automatically prepend https:// if protocol is missing.
+        """
+        if value and not value.startswith(('http://', 'https://')):
+            return f'https://{value}'
+        return value
+
 
 class BusinessAccountProfileSerializer(serializers.ModelSerializer):
     """
@@ -230,6 +238,14 @@ class BusinessAccountProfileSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'email', 'is_email_verified', 'is_profile_complete', 'date_joined', 'last_login', 'updated_at'
         ]
+
+    def validate_website(self, value):
+        """
+        Automatically prepend https:// if protocol is missing.
+        """
+        if value and not value.startswith(('http://', 'https://')):
+            return f'https://{value}'
+        return value
 
 
 class PasswordChangeSerializer(serializers.Serializer):
