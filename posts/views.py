@@ -398,27 +398,30 @@ class NeedPostProposalCreateView(generics.CreateAPIView):
 class NeedPostProposalCancelView(APIView):
     """
     API endpoint to cancel a proposal.
+    Supports passing either the Proposal ID or the NeedPost ID.
     """
     authentication_classes = [MultiModelJWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-        try:
-            proposal = NeedPostProposal.objects.get(pk=pk)
-        except NeedPostProposal.DoesNotExist:
-            return standard_response(success=False, message="Proposal not found.", status_code=status.HTTP_404_NOT_FOUND)
-
         # Force evaluation
         user = request.user
         user_id = str(user.id)
         user_content_type = ContentType.objects.get_for_model(user)
 
-        # Explicitly check if the user is the proposer
-        proposer_id = str(proposal.proposer_object_id)
-        proposer_content_type = proposal.proposer_content_type
+        # Try to find proposal by its own ID first, then by NeedPost ID
+        proposal = NeedPostProposal.objects.filter(
+            Q(pk=pk) | Q(need_post_id=pk),
+            proposer_content_type=user_content_type,
+            proposer_object_id=user.id
+        ).first()
 
-        if proposer_content_type != user_content_type or proposer_id != user_id:
-            return standard_response(success=False, message="You are not authorized to cancel this proposal.", status_code=status.HTTP_403_FORBIDDEN)
+        if not proposal:
+            return standard_response(
+                success=False, 
+                message="Proposal not found or you are not authorized to cancel it.", 
+                status_code=status.HTTP_404_NOT_FOUND
+            )
 
         if proposal.status == 'cancelled':
             return standard_response(success=False, message="Proposal is already cancelled.", status_code=status.HTTP_400_BAD_REQUEST)
