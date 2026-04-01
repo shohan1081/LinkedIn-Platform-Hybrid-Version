@@ -66,13 +66,7 @@ class NeedPostListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         user = self.request.user
-        if isinstance(user, User):
-            author_content_type = ContentType.objects.get_for_model(User)
-        elif isinstance(user, BusinessAccount):
-            author_content_type = ContentType.objects.get_for_model(BusinessAccount)
-        else:
-            # This case should ideally not happen with proper authentication setup
-            raise ValueError("Authenticated user is neither a User nor a BusinessAccount.")
+        author_content_type = ContentType.objects.get_for_model(user)
         
         serializer.save(
             author_content_type=author_content_type,
@@ -302,25 +296,27 @@ class NeedPostProposalCreateView(generics.CreateAPIView):
         except NeedPost.DoesNotExist:
             return standard_response(success=False, message="Need post not found.", status_code=status.HTTP_404_NOT_FOUND)
 
-        # Check if user is the author of the post
-        if need_post.author == request.user:
+        # Force evaluation and get clean user object/ID/ContentType
+        user = request.user
+        user_id = str(user.id)
+        user_content_type = ContentType.objects.get_for_model(user)
+
+        # Explicitly check if the requesting user is the author
+        author_id = str(need_post.author_object_id)
+        author_content_type = need_post.author_content_type
+
+        if author_content_type == user_content_type and author_id == user_id:
             return standard_response(success=False, message="You cannot propose to your own post.", status_code=status.HTTP_400_BAD_REQUEST)
 
         # Check if already proposed
-        user = request.user
-        if isinstance(user, User):
-            proposer_content_type = ContentType.objects.get_for_model(User)
-        else:
-            proposer_content_type = ContentType.objects.get_for_model(BusinessAccount)
-
-        if NeedPostProposal.objects.filter(need_post=need_post, proposer_content_type=proposer_content_type, proposer_object_id=user.id).exists():
+        if NeedPostProposal.objects.filter(need_post=need_post, proposer_content_type=user_content_type, proposer_object_id=user.id).exists():
             return standard_response(success=False, message="You have already submitted a proposal for this post.", status_code=status.HTTP_400_BAD_REQUEST)
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save(
             need_post=need_post,
-            proposer_content_type=proposer_content_type,
+            proposer_content_type=user_content_type,
             proposer_object_id=user.id
         )
 
@@ -344,8 +340,16 @@ class NeedPostProposalCancelView(APIView):
         except NeedPostProposal.DoesNotExist:
             return standard_response(success=False, message="Proposal not found.", status_code=status.HTTP_404_NOT_FOUND)
 
-        # Check if the user is the proposer
-        if proposal.proposer != request.user:
+        # Force evaluation
+        user = request.user
+        user_id = str(user.id)
+        user_content_type = ContentType.objects.get_for_model(user)
+
+        # Explicitly check if the user is the proposer
+        proposer_id = str(proposal.proposer_object_id)
+        proposer_content_type = proposal.proposer_content_type
+
+        if proposer_content_type != user_content_type or proposer_id != user_id:
             return standard_response(success=False, message="You are not authorized to cancel this proposal.", status_code=status.HTTP_403_FORBIDDEN)
 
         if proposal.status == 'cancelled':
@@ -376,7 +380,16 @@ class NeedPostProposalListView(generics.ListAPIView):
         except NeedPost.DoesNotExist:
             return standard_response(success=False, message="Need post not found.", status_code=status.HTTP_404_NOT_FOUND)
 
-        if need_post.author != request.user:
+        # Force evaluation
+        user = request.user
+        user_id = str(user.id)
+        user_content_type = ContentType.objects.get_for_model(user)
+
+        # Explicitly check if the requesting user is the author
+        author_id = str(need_post.author_object_id)
+        author_content_type = need_post.author_content_type
+
+        if author_content_type != user_content_type or author_id != user_id:
             return standard_response(success=False, message="You are not authorized to view proposals for this post.", status_code=status.HTTP_403_FORBIDDEN)
 
         queryset = self.get_queryset()
