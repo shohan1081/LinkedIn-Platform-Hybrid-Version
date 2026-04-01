@@ -161,6 +161,12 @@ Images should be uploaded using `multipart/form-data`.
 - **Method:** `GET`
 - **Authentication:** Required (Post Author Only)
 
+#### List All Received Proposals
+- **Endpoint:** `proposals/received/`
+- **Method:** `GET`
+- **Authentication:** Required.
+- **Behavior:** Returns all proposals sent to all posts created by the currently authenticated user.
+
 #### Cancel a Proposal
 - **Endpoint:** `proposals/<int:proposal_id>/cancel/`
 - **Method:** `POST`

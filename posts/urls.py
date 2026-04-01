@@ -9,6 +9,7 @@ from .views import (
     NeedPostProposalCreateView,
     NeedPostProposalCancelView,
     NeedPostProposalListView,
+    ReceivedProposalsListView,
 )
 
 app_name = 'posts'
@@ -21,6 +22,7 @@ urlpatterns = [
     # Need Post Proposals
     path('needs/<uuid:pk>/propose/', NeedPostProposalCreateView.as_view(), name='needpost-propose'),
     path('needs/<uuid:pk>/proposals/', NeedPostProposalListView.as_view(), name='needpost-proposals'),
+    path('proposals/received/', ReceivedProposalsListView.as_view(), name='proposals-received'),
     path('proposals/<int:pk>/cancel/', NeedPostProposalCancelView.as_view(), name='proposal-cancel'),
 
     # Offer Posts

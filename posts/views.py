@@ -315,6 +315,36 @@ class MyPostsListView(generics.ListAPIView):
             data=serializer.data
         )
 
+class ReceivedProposalsListView(generics.ListAPIView):
+    """
+    Returns all proposals received for all NeedPosts created by the currently authenticated user.
+    """
+    serializer_class = NeedPostProposalSerializer
+    authentication_classes = [MultiModelJWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        user_content_type = ContentType.objects.get_for_model(user)
+        
+        # Find all NeedPosts authored by the current user
+        my_posts_ids = NeedPost.objects.filter(
+            author_content_type=user_content_type,
+            author_object_id=user.id
+        ).values_list('id', flat=True)
+        
+        # Return proposals for those posts
+        return NeedPostProposal.objects.filter(need_post_id__in=my_posts_ids).order_at('-created_at')
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return standard_response(
+            success=True,
+            message="Received proposals retrieved successfully",
+            data=serializer.data
+        )
+
 from rest_framework.parsers import MultiPartParser, FormParser
 
 # Need Post Proposal Views
