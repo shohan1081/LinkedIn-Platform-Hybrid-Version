@@ -206,6 +206,8 @@ class BusinessAccountProfileRegistrationSerializer(serializers.ModelSerializer):
     """
     Serializer for completing business account profile
     """
+    website = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
     class Meta:
         model = BusinessAccount
         fields = [
@@ -216,10 +218,23 @@ class BusinessAccountProfileRegistrationSerializer(serializers.ModelSerializer):
 
     def validate_website(self, value):
         """
-        Automatically prepend https:// if protocol is missing.
+        Automatically prepend https:// if protocol is missing and validate format.
         """
-        if value and not value.startswith(('http://', 'https://')):
-            return f'https://{value}'
+        if not value:
+            return value
+            
+        if not value.startswith(('http://', 'https://')):
+            value = f'https://{value}'
+            
+        # Use Django's URL validator to ensure it's actually valid after prepending
+        from django.core.validators import URLValidator
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        validate_url = URLValidator()
+        try:
+            validate_url(value)
+        except DjangoValidationError:
+            raise serializers.ValidationError("Enter a valid URL.")
+            
         return value
 
 
@@ -227,6 +242,8 @@ class BusinessAccountProfileSerializer(serializers.ModelSerializer):
     """
     Serializer for business account profile (read and update)
     """
+    website = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
     class Meta:
         model = BusinessAccount
         fields = [
@@ -241,10 +258,21 @@ class BusinessAccountProfileSerializer(serializers.ModelSerializer):
 
     def validate_website(self, value):
         """
-        Automatically prepend https:// if protocol is missing.
+        Automatically prepend https:// if protocol is missing and validate format.
         """
-        if value and not value.startswith(('http://', 'https://')):
-            return f'https://{value}'
+        if not value:
+            return value
+            
+        if not value.startswith(('http://', 'https://')):
+            value = f'https://{value}'
+            
+        from django.core.validators import URLValidator
+        validate_url = URLValidator()
+        try:
+            validate_url(value)
+        except:
+            raise serializers.ValidationError("Enter a valid URL.")
+            
         return value
 
 
