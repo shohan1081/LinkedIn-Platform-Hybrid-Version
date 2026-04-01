@@ -37,6 +37,7 @@ from .serializers import (
     AccountDeleteSerializer,
     LanguagePreferenceSerializer,
     UserProfileRegistrationSerializer,
+    MultiModelTokenRefreshSerializer,
 )
 from .utils import (
     send_welcome_email,
@@ -794,15 +795,10 @@ class AccountDeleteView(APIView):
 
 class CustomTokenRefreshView(TokenRefreshView):
     """
-    Custom token refresh view with standard response format
-    
-    POST /api/users/token/refresh/
-    
-    Request body:
-    {
-        "refresh": "refresh_token_here"
-    }
+    Custom token refresh view with standard response format.
+    Handles both standard User and BusinessAccount tokens.
     """
+    serializer_class = MultiModelTokenRefreshSerializer
     
     def post(self, request, *args, **kwargs):
         """Refresh access token"""
@@ -823,12 +819,19 @@ class CustomTokenRefreshView(TokenRefreshView):
                 errors={'detail': str(e)},
                 status_code=status.HTTP_401_UNAUTHORIZED
             )
-        except InvalidToken as e:
+        except Exception as e:
+            # Handle user not found during refresh logic in serializer
+            if "User matching query does not exist" in str(e):
+                return standard_response(
+                    success=False,
+                    message="User associated with this token no longer exists",
+                    status_code=status.HTTP_401_UNAUTHORIZED
+                )
             return standard_response(
                 success=False,
-                message="Invalid token",
+                message="An unexpected error occurred during token refresh",
                 errors={'detail': str(e)},
-                status_code=status.HTTP_401_UNAUTHORIZED
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
 

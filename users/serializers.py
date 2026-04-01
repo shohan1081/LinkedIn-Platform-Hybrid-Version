@@ -487,6 +487,61 @@ class TokenVerifyResponseSerializer(serializers.Serializer):
 class LanguagePreferenceSerializer(serializers.Serializer):
     language = serializers.ChoiceField(choices=[('en', 'English'), ('hi', 'Hindi'), ('pt', 'Portuguese')])
 
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+from rest_framework_simplejwt.settings import api_settings
+from rest_framework_simplejwt.tokens import RefreshToken
+from business_account.models import BusinessAccount
+
+class MultiModelTokenRefreshSerializer(TokenRefreshSerializer):
+    def validate(self, attrs):
+        from rest_framework_simplejwt.tokens import RefreshToken
+        from rest_framework_simplejwt.settings import api_settings
+        from users.models import User
+        from business_account.models import BusinessAccount
+        import uuid
+
+        try:
+            refresh = RefreshToken(attrs["refresh"])
+        except Exception as e:
+            raise serializers.ValidationError({"refresh": str(e)})
+
+        # Use USER_ID_CLAIM (usually 'user_id') to get the ID from the token payload
+        user_id = refresh.get(api_settings.USER_ID_CLAIM)
+        
+        # Ensure user_id is a valid UUID for lookup if needed
+        try:
+            lookup_id = uuid.UUID(str(user_id)) if user_id else None
+        except ValueError:
+            lookup_id = user_id
+
+        if not lookup_id:
+            raise serializers.ValidationError("Invalid token: No user ID found")
+
+        # Check if user exists in either model
+        user_exists = User.objects.filter(pk=lookup_id).exists() or \
+                      BusinessAccount.objects.filter(pk=lookup_id).exists()
+        
+        if not user_exists:
+            raise serializers.ValidationError("User not found")
+
+        # Manually generate the new access token to avoid standard lookup
+        data = {"access": str(refresh.access_token)}
+
+        if api_settings.ROTATE_REFRESH_TOKENS:
+            if api_settings.BLACKLIST_AFTER_ROTATION:
+                try:
+                    refresh.blacklist()
+                except AttributeError:
+                    pass
+
+            refresh.set_jti()
+            refresh.set_exp()
+            refresh.set_iat()
+
+            data["refresh"] = str(refresh)
+
+        return data
+
 class UserProfileRegistrationSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
