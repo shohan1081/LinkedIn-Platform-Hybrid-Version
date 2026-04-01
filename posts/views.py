@@ -334,7 +334,7 @@ class ReceivedProposalsListView(generics.ListAPIView):
         ).values_list('id', flat=True)
         
         # Return proposals for those posts
-        return NeedPostProposal.objects.filter(need_post_id__in=my_posts_ids).order_at('-created_at')
+        return NeedPostProposal.objects.filter(need_post_id__in=my_posts_ids).order_by('-created_at')
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
