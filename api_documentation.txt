@@ -247,7 +247,28 @@ Images should be uploaded using `multipart/form-data`.
 
 ---
 
-### 6. Post Detail (Retrieve, Update, Delete)
+### 6. My Posts (User's Activity)
+
+- **Endpoint:** `my-posts/`
+- **Method:** `GET`
+- **Authentication:** Required.
+- **Behavior:**
+  - Returns only the `NeedPosts` and `OfferPosts` created by the currently authenticated user (Standard or Business).
+- **Response Example (`data`):**
+```json
+[
+    {
+        "id": "uuid-1",
+        "post_type": "offer",
+        "title": "My Offer",
+        ...
+    }
+]
+```
+
+---
+
+### 7. Post Detail (Retrieve, Update, Delete)
 
 - **Endpoints:** 
   - `needs/<uuid:pk>/`

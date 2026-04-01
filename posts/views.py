@@ -277,6 +277,44 @@ class UserAndBusinessPostsListView(generics.ListAPIView):
             data=serializer.data
         )
 
+class MyPostsListView(generics.ListAPIView):
+    """
+    API endpoint that returns only the posts created by the currently authenticated user.
+    """
+    serializer_class = UserAndBusinessPostListSerializer
+    authentication_classes = [MultiModelJWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        user_content_type = ContentType.objects.get_for_model(user)
+        
+        need_posts_qs = NeedPost.objects.filter(
+            author_content_type=user_content_type,
+            author_object_id=user.id
+        ).prefetch_related('images', 'tags')
+        
+        offer_posts_qs = OfferPost.objects.filter(
+            author_content_type=user_content_type,
+            author_object_id=user.id
+        ).prefetch_related('images', 'tags')
+
+        queryset = sorted(
+            list(need_posts_qs) + list(offer_posts_qs),
+            key=lambda post: post.created_at,
+            reverse=True
+        )
+        return queryset
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return standard_response(
+            success=True,
+            message="Your posts retrieved successfully",
+            data=serializer.data
+        )
+
 from rest_framework.parsers import MultiPartParser, FormParser
 
 # Need Post Proposal Views

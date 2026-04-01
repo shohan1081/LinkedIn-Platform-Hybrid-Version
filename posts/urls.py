@@ -5,6 +5,7 @@ from .views import (
     OfferPostListCreateView,
     OfferPostRetrieveUpdateDestroyView,
     UserAndBusinessPostsListView,
+    MyPostsListView,
     NeedPostProposalCreateView,
     NeedPostProposalCancelView,
     NeedPostProposalListView,
@@ -28,4 +29,5 @@ urlpatterns = [
     
     # Combined Feed
     path('all/', UserAndBusinessPostsListView.as_view(), name='all-posts-list'),
+    path('my-posts/', MyPostsListView.as_view(), name='my-posts-list'),
 ]
