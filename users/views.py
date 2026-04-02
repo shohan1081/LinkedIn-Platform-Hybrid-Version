@@ -525,24 +525,31 @@ class PasswordResetOTPVerifyView(APIView):
     """
     API endpoint to verify OTP for password reset
     """
-    permission_classes = [AllowAny]
     serializer_class = PasswordResetOTPVerifySerializer
 
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
-            email = serializer.validated_data['email']
+            email = serializer.validated_data['email'].lower()
             otp = serializer.validated_data['otp']
-            try:
-                user = User.objects.get(email=email)
+            
+            from users.models import User
+            from business_account.models import BusinessAccount
+            
+            # Try to find user in either model
+            user = User.objects.filter(email=email).first()
+            if not user:
+                user = BusinessAccount.objects.filter(email=email).first()
+                
+            if user:
                 if user.otp == otp and user.is_otp_valid():
                     # OTP is correct, allow password reset
                     user.clear_otp()
                     return standard_response(success=True, message="OTP verified successfully. You can now reset your password.")
                 else:
                     return standard_response(success=False, message="Invalid or expired OTP.", status_code=status.HTTP_400_BAD_REQUEST)
-            except User.DoesNotExist:
-                return standard_response(success=False, message="User not found.", status_code=status.HTTP_404_NOT_FOUND)
+            
+            return standard_response(success=False, message="User not found.", status_code=status.HTTP_404_NOT_FOUND)
         return standard_response(success=False, message="Invalid data.", errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
 
 
@@ -562,7 +569,6 @@ class PasswordResetConfirmView(APIView):
     }
     """
     
-    permission_classes = [AllowAny]
     serializer_class = PasswordResetConfirmSerializer
     
     def post(self, request):
@@ -570,12 +576,18 @@ class PasswordResetConfirmView(APIView):
         serializer = self.serializer_class(data=request.data)
         
         if serializer.is_valid():
-            email = serializer.validated_data['email']
+            email = serializer.validated_data['email'].lower()
             new_password = serializer.validated_data['password']
             
-            try:
-                user = User.objects.get(email=email)
+            from users.models import User
+            from business_account.models import BusinessAccount
+            
+            # Try to find user in either model
+            user = User.objects.filter(email=email).first()
+            if not user:
+                user = BusinessAccount.objects.filter(email=email).first()
                 
+            if user:
                 # Set new password
                 user.set_password(new_password)
                 user.save()
@@ -586,12 +598,11 @@ class PasswordResetConfirmView(APIView):
                     status_code=status.HTTP_200_OK
                 )
             
-            except User.DoesNotExist:
-                return standard_response(
-                    success=False,
-                    message="User not found",
-                    status_code=status.HTTP_404_NOT_FOUND
-                )
+            return standard_response(
+                success=False,
+                message="User not found",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
         
         return standard_response(
             success=False,

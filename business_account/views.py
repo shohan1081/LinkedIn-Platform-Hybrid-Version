@@ -263,17 +263,25 @@ class PasswordResetOTPVerifyView(APIView):
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
-            email = serializer.validated_data['email']
+            email = serializer.validated_data['email'].lower()
             otp = serializer.validated_data['otp']
-            try:
-                business_account = BusinessAccount.objects.get(email=email)
-                if business_account.otp == otp and business_account.is_otp_valid():
-                    business_account.clear_otp()
+            
+            from users.models import User
+            from .models import BusinessAccount
+            
+            # Try to find user in either model
+            user = BusinessAccount.objects.filter(email=email).first()
+            if not user:
+                user = User.objects.filter(email=email).first()
+                
+            if user:
+                if user.otp == otp and user.is_otp_valid():
+                    user.clear_otp()
                     return standard_response(success=True, message="OTP verified successfully. You can now reset your password.")
                 else:
                     return standard_response(success=False, message="Invalid or expired OTP.", status_code=status.HTTP_400_BAD_REQUEST)
-            except BusinessAccount.DoesNotExist:
-                return standard_response(success=False, message="Business account not found.", status_code=status.HTTP_404_NOT_FOUND)
+            
+            return standard_response(success=False, message="User not found.", status_code=status.HTTP_404_NOT_FOUND)
         return standard_response(success=False, message="Invalid data.", errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
 
 
@@ -286,14 +294,20 @@ class PasswordResetConfirmView(APIView):
         serializer = self.serializer_class(data=request.data)
         
         if serializer.is_valid():
-            email = serializer.validated_data['email']
+            email = serializer.validated_data['email'].lower()
             new_password = serializer.validated_data['password']
             
-            try:
-                business_account = BusinessAccount.objects.get(email=email)
+            from users.models import User
+            from .models import BusinessAccount
+            
+            # Try to find user in either model
+            user = BusinessAccount.objects.filter(email=email).first()
+            if not user:
+                user = User.objects.filter(email=email).first()
                 
-                business_account.set_password(new_password)
-                business_account.save()
+            if user:
+                user.set_password(new_password)
+                user.save()
                 
                 return standard_response(
                     success=True,
@@ -301,12 +315,11 @@ class PasswordResetConfirmView(APIView):
                     status_code=status.HTTP_200_OK
                 )
             
-            except BusinessAccount.DoesNotExist:
-                return standard_response(
-                    success=False,
-                    message="Business account not found",
-                    status_code=status.HTTP_404_NOT_FOUND
-                )
+            return standard_response(
+                success=False,
+                message="User not found",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
         
         return standard_response(
             success=False,
