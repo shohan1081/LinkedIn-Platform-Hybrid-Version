@@ -478,7 +478,6 @@ class PasswordResetRequestView(APIView):
     }
     """
     
-    permission_classes = [AllowAny]
     serializer_class = PasswordResetRequestSerializer
     
     def post(self, request):
@@ -486,24 +485,26 @@ class PasswordResetRequestView(APIView):
         serializer = self.serializer_class(data=request.data)
         
         if serializer.is_valid():
-            email = serializer.validated_data['email']
+            email = serializer.validated_data['email'].lower()
             
-            try:
-                user = User.objects.get(email=email)
-                
+            from users.models import User
+            from business_account.models import BusinessAccount
+            from .utils import generate_otp, send_otp_email
+            
+            # Try to find user in either model
+            user = User.objects.filter(email=email).first()
+            if not user:
+                user = BusinessAccount.objects.filter(email=email).first()
+            
+            if user:
                 # Generate and send OTP
-                from .utils import generate_otp, send_otp_email
                 otp = generate_otp()
                 user.otp = otp
                 user.otp_created_at = timezone.now()
                 user.save(update_fields=['otp', 'otp_created_at'])
                 send_otp_email(user, otp)
             
-            except User.DoesNotExist:
-                # For security, don't reveal if email exists or not
-                pass
-            
-            # Always return success message
+            # Always return success message for security
             return standard_response(
                 success=True,
                 message="If an account with that email exists, an OTP has been sent.",
