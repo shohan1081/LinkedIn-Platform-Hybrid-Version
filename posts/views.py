@@ -404,30 +404,26 @@ class NeedPostProposalCancelView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-        import uuid
-        from django.core.exceptions import ValidationError as DjangoValidationError
-
-        # Force evaluation and get clean objects
+        # Force evaluation
         user = request.user
         user_content_type = ContentType.objects.get_for_model(user)
-
-        # Ensure pk is a valid UUID object
-        try:
-            if isinstance(pk, str):
-                target_uuid = uuid.UUID(pk)
-            else:
-                target_uuid = pk
-        except (ValueError, TypeError):
-            return standard_response(success=False, message="Invalid ID format.", status_code=status.HTTP_400_BAD_REQUEST)
-
-        # Use separate queries or a more guarded filter to prevent SQLite conversion errors on bad data
-        # We look for a proposal where the user is the proposer, matching either the proposal's ID or the post's ID
-        proposal = NeedPostProposal.objects.filter(
+        
+        # We search for the proposal using the target ID as a string to avoid 
+        # SQLite conversion crashes on old/invalid data in the table.
+        target_id_str = str(pk)
+        
+        # First, find all proposals by this user
+        proposals_qs = NeedPostProposal.objects.filter(
             proposer_content_type=user_content_type,
             proposer_object_id=user.id
-        ).filter(
-            Q(id=target_uuid) | Q(need_post_id=target_uuid)
-        ).first()
+        )
+        
+        # Manually find the matching one to be 100% safe from DB-level conversion errors
+        proposal = None
+        for p in proposals_qs:
+            if str(p.id) == target_id_str or str(p.need_post_id) == target_id_str:
+                proposal = p
+                break
 
         if not proposal:
             return standard_response(
