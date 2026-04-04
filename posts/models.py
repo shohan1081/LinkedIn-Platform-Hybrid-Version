@@ -76,6 +76,7 @@ class NeedPost(Post):
         verbose_name_plural = _("Need Posts")
 
 class NeedPostProposal(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     STATUS_CHOICES = [
         ('pending', 'Pending'),
         ('accepted', 'Accepted'),
