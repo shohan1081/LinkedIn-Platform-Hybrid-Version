@@ -100,7 +100,27 @@ class User(AbstractBaseUser, PermissionsMixin):
         default=False,
         help_text=_("Designates whether the user has an active subscription")
     )
+
+    is_verified = models.BooleanField(
+        _('verified'),
+        default=False,
+        help_text=_("Designates whether the user has been verified by a business account")
+    )
+
+    is_profile_complete = models.BooleanField(
+        _('profile complete'),
+        default=False,
+        help_text=_("Designates whether the user has completed their profile registration")
+    )
     
+    headline = models.CharField(
+        _('headline'),
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text=_("A short headline or status for the user's profile")
+    )
+
     # Profile picture
     profile_picture = models.ImageField(
         _('profile picture'),
@@ -108,6 +128,14 @@ class User(AbstractBaseUser, PermissionsMixin):
         null=True,
         blank=True,
         help_text=_("User's profile picture")
+    )
+
+    cover_photo = models.ImageField(
+        _('cover photo'),
+        upload_to='cover_photos/',
+        null=True,
+        blank=True,
+        help_text=_("User's cover photo")
     )
 
     bio = models.TextField(
