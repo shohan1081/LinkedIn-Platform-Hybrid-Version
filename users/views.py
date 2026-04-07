@@ -44,6 +44,7 @@ from .utils import (
     send_account_deletion_email,
     get_client_ip,
     get_user_agent,
+    get_full_media_url,
 )
 from .models import UserLoginHistory, AccountDeletionRequest, ProfileDataDeletionRequest
 from django.shortcuts import render
@@ -297,13 +298,15 @@ class UserLoginView(APIView):
                 success=True,
                 message="Login successful",
                 data={
+                    'account_type': 'personal',
                     'user': {
                         'id': str(user.id),
                         'email': user.email,
                         'first_name': user.first_name,
                         'last_name': user.last_name,
                         'is_email_verified': user.is_email_verified,
-                        'profile_picture': user.profile_picture.url if user.profile_picture else None, # noqa
+                        'is_profile_complete': user.is_profile_complete,
+                        'profile_picture': get_full_media_url(request, user.profile_picture),
                     },
                     'tokens': {
                         'access': access_token,
@@ -350,9 +353,15 @@ class UserLogoutView(APIView):
                     status_code=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Blacklist the refresh token
-            token = RefreshToken(refresh_token)
-            token.blacklist()
+            # Blacklist only works for AUTH_USER_MODEL (User)
+            # BusinessAccount tokens are not tracked in the OutstandingToken table
+            if isinstance(request.user, User):
+                try:
+                    token = RefreshToken(refresh_token)
+                    token.blacklist()
+                except (TokenError, AttributeError):
+                    # If blacklist fails (e.g. token already blacklisted), still return success
+                    pass
             
             return standard_response(
                 success=True,
@@ -414,13 +423,15 @@ class VerifyOTPView(APIView):
                         success=True,
                         message="OTP verified successfully. User logged in.",
                         data={
+                            'account_type': 'personal',
                             'user': {
                                 'id': str(user.id),
                                 'email': user.email,
                                 'first_name': user.first_name,
                                 'last_name': user.last_name,
                                 'is_email_verified': user.is_email_verified,
-                                'profile_picture': user.profile_picture.url if user.profile_picture else None,
+                                'is_profile_complete': user.is_profile_complete,
+                                'profile_picture': get_full_media_url(request, user.profile_picture),
                             },
                             'tokens': {
                                 'access': access_token,
@@ -683,7 +694,7 @@ class UserProfileView(APIView):
     def get(self, request):
         """Get user profile"""
         user = request.user
-        serializer = UserProfileSerializer(user)
+        serializer = UserProfileSerializer(user, context={'request': request})
         
         return standard_response(
             success=True,
@@ -695,13 +706,13 @@ class UserProfileView(APIView):
     def put(self, request):
         """Update full user profile"""
         user = request.user
-        serializer = UserProfileUpdateSerializer(user, data=request.data)
+        serializer = UserProfileUpdateSerializer(user, data=request.data, context={'request': request})
         
         if serializer.is_valid():
             serializer.save()
             
             # Return updated profile
-            profile_serializer = UserProfileSerializer(user)
+            profile_serializer = UserProfileSerializer(user, context={'request': request})
             
             return standard_response(
                 success=True,
@@ -720,13 +731,13 @@ class UserProfileView(APIView):
     def patch(self, request):
         """Partial update user profile"""
         user = request.user
-        serializer = UserProfileUpdateSerializer(user, data=request.data, partial=True)
+        serializer = UserProfileUpdateSerializer(user, data=request.data, partial=True, context={'request': request})
         
         if serializer.is_valid():
             serializer.save()
             
             # Return updated profile
-            profile_serializer = UserProfileSerializer(user)
+            profile_serializer = UserProfileSerializer(user, context={'request': request})
             
             return standard_response(
                 success=True,
@@ -909,3 +920,28 @@ class UserProfileRegistrationView(generics.UpdateAPIView):
 
     def get_object(self):
         return self.request.user
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        if serializer.is_valid():
+            self.perform_update(serializer)
+            return standard_response(
+                success=True,
+                message="Profile registration completed successfully",
+                data=serializer.data,
+                status_code=status.HTTP_200_OK
+            )
+        return standard_response(
+            success=False,
+            message="Profile registration failed",
+            errors=serializer.errors,
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+
+    def perform_update(self, serializer):
+        user = serializer.save()
+        if not user.is_profile_complete:
+            user.is_profile_complete = True
+            user.save(update_fields=['is_profile_complete'])
