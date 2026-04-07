@@ -90,9 +90,54 @@ The API returns responses in a standardized format:
 }
 ```
 
----
+### 4. Verification Requests (`/api/business-account/verification/`)
 
-## Posts API (`/api/posts/`)
+#### Request Verification (User Only)
+- **Endpoint:** `request/`
+- **Method:** `POST`
+- **Authentication:** Required (Standard User Token)
+- **Request Body (JSON):**
+```json
+{
+    "business_account": "business-account-uuid"
+}
+```
+- **Description:** Allows a standard user to request profile verification from a specific business.
+
+#### List Pending Verification Requests (Business Only)
+- **Endpoint:** `requests/`
+- **Method:** `GET`
+- **Authentication:** Required (Business Account Token)
+- **Description:** Returns a list of all pending verification requests received by the business.
+
+#### Verification Request Action (Business Only)
+- **Endpoint:** `requests/<uuid:request_id>/action/`
+- **Method:** `POST`
+- **Authentication:** Required (Business Account Token)
+- **Request Body (JSON):**
+```json
+{
+    "action": "accept" 
+}
+```
+- **Actions:** `accept` or `reject`.
+- **Behavior:** Accepting a request marks the user as `is_verified`.
+
+### 5. Membership Management (`/api/business-account/`)
+
+#### List Verified Members (Business Only)
+- **Endpoint:** `members/`
+- **Method:** `GET`
+- **Authentication:** Required (Business Account Token)
+- **Description:** Lists all users verified by this business.
+
+#### Remove Verified Member (Business Only)
+- **Endpoint:** `members/<uuid:user_id>/remove/`
+- **Method:** `POST`
+- **Authentication:** Required (Business Account Token)
+- **Description:** Removes a user from the verified member list. If the user has no other verifications, their `is_verified` status is revoked.
+
+---
 
 ### 1. Common Post Features
 
