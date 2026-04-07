@@ -65,6 +65,22 @@ class BusinessAccount(AbstractBaseUser, PermissionsMixin):
         help_text=_("Designates whether the business account has completed their profile registration")
     )
     
+    headline = models.CharField(
+        _('headline'),
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text=_("A short headline or status for the business profile")
+    )
+
+    cover_photo = models.ImageField(
+        _('cover photo'),
+        upload_to='business_cover_photos/',
+        null=True,
+        blank=True,
+        help_text=_("Business account's cover photo")
+    )
+    
     # Timestamps
     date_joined = models.DateTimeField(
         _('date joined'),
@@ -116,3 +132,44 @@ class BusinessAccount(AbstractBaseUser, PermissionsMixin):
         self.otp = None
         self.otp_created_at = None
         self.save(update_fields=['otp', 'otp_created_at'])
+
+
+class VerificationRequest(models.Model):
+    """
+    Model to handle verification requests from Users to Business Accounts
+    """
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('accepted', 'Accepted'),
+        ('rejected', 'Rejected'),
+    ]
+
+    user = models.ForeignKey(
+        'users.User', 
+        on_delete=models.CASCADE, 
+        related_name='verification_requests',
+        help_text=_("The user requesting verification")
+    )
+    business_account = models.ForeignKey(
+        BusinessAccount, 
+        on_delete=models.CASCADE, 
+        related_name='received_requests',
+        help_text=_("The business account receiving the request")
+    )
+    status = models.CharField(
+        max_length=20, 
+        choices=STATUS_CHOICES, 
+        default='pending',
+        help_text=_("Status of the verification request")
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _('verification request')
+        verbose_name_plural = _('verification requests')
+        unique_together = ('user', 'business_account')
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user.email} -> {self.business_account.business_name or self.business_account.email}"
