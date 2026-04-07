@@ -18,6 +18,13 @@ class ImageSerializer(serializers.ModelSerializer):
         model = Image
         fields = ['image', 'caption']
 
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+        if request and instance.image:
+            representation['image'] = request.build_absolute_uri(instance.image.url)
+        return representation
+
 class BasePostSerializer(serializers.ModelSerializer):
     author_id = serializers.SerializerMethodField()
     author_type = serializers.SerializerMethodField()
@@ -201,3 +208,10 @@ class NeedPostProposalSerializer(serializers.ModelSerializer):
         elif isinstance(obj.proposer, BusinessAccount):
             return 'business_account'
         return None
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+        if request and instance.cv_file:
+            representation['cv_file'] = request.build_absolute_uri(instance.cv_file.url)
+        return representation
