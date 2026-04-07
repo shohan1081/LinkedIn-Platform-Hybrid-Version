@@ -298,6 +298,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
         read_only=True,
         help_text="User's age calculated from date of birth"
     )
+    is_verified = serializers.BooleanField(read_only=True)
+    is_profile_complete = serializers.BooleanField(read_only=True)
+    account_type = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -310,11 +313,21 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'gender',
             'occupation',
             'country',
+            'address',
+            'address_line_2',
+            'city',
+            'state',
+            'zip_code',
             'age',
             'bio',
+            'headline',
             'profile_picture',
+            'cover_photo',
             'is_email_verified',
             'is_subscribed',
+            'is_verified',
+            'is_profile_complete',
+            'account_type',
             'date_joined',
             'last_login',
         ]
@@ -323,14 +336,32 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'email',
             'is_email_verified',
             'is_subscribed',
+            'is_verified',
+            'is_profile_complete',
             'date_joined',
             'last_login',
         ]
+
+    def get_account_type(self, obj):
+        return 'personal'
     
     def get_age(self, obj):
         """Calculate age from date of birth"""
         from .utils import calculate_age
         return calculate_age(obj.date_of_birth)
+
+    def to_representation(self, instance):
+        """Ensure absolute URLs for profile_picture and cover_photo"""
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+        
+        if request:
+            if instance.profile_picture:
+                representation['profile_picture'] = request.build_absolute_uri(instance.profile_picture.url)
+            if instance.cover_photo:
+                representation['cover_photo'] = request.build_absolute_uri(instance.cover_photo.url)
+        
+        return representation
 
     def validate_first_name(self, value):
         """Validate user's first name"""
@@ -380,7 +411,7 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = User
-        fields = ['first_name', 'last_name', 'date_of_birth', 'gender', 'occupation', 'country', 'bio', 'profile_picture']
+        fields = ['first_name', 'last_name', 'date_of_birth', 'gender', 'occupation', 'country', 'bio', 'headline', 'profile_picture', 'cover_photo']
     
     def validate_first_name(self, value):
         """Validate user's first name"""
@@ -545,4 +576,4 @@ class MultiModelTokenRefreshSerializer(TokenRefreshSerializer):
 class UserProfileRegistrationSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['first_name', 'last_name', 'date_of_birth', 'address', 'address_line_2', 'city', 'state', 'zip_code']
+        fields = ['first_name', 'last_name', 'date_of_birth', 'address', 'address_line_2', 'city', 'state', 'zip_code', 'headline', 'profile_picture', 'cover_photo']
