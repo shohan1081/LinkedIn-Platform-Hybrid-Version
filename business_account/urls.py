@@ -4,6 +4,7 @@ from .views import (
     BusinessAccountLoginView,
     VerifyOTPView,
     ResendOTPView,
+    BusinessAccountLogoutView,
     PasswordResetRequestView,
     PasswordResetOTPVerifyView,
     PasswordResetConfirmView,
@@ -12,6 +13,11 @@ from .views import (
     BusinessAccountProfileView,
     CustomBusinessTokenRefreshView,
     CustomBusinessTokenVerifyView,
+    VerificationRequestCreateView,
+    VerificationRequestListView,
+    VerificationRequestActionView,
+    BusinessMemberListView,
+    RemoveMemberView,
 )
 
 app_name = 'business_account'
@@ -20,6 +26,7 @@ urlpatterns = [
     # Authentication endpoints
     path('signup/', BusinessAccountRegistrationView.as_view(), name='signup'),
     path('login/', BusinessAccountLoginView.as_view(), name='login'),
+    path('logout/', BusinessAccountLogoutView.as_view(), name='logout'),
     
     # Token management
     path('token/refresh/', CustomBusinessTokenRefreshView.as_view(), name='token-refresh'),
@@ -38,4 +45,11 @@ urlpatterns = [
     # Profile management
     path('profile-register/', BusinessAccountProfileRegistrationView.as_view(), name='profile-register'),
     path('profile/', BusinessAccountProfileView.as_view(), name='profile'),
+
+    # Verification management
+    path('verification/request/', VerificationRequestCreateView.as_view(), name='verification-request-create'),
+    path('verification/requests/', VerificationRequestListView.as_view(), name='verification-request-list'),
+    path('verification/requests/<int:pk>/action/', VerificationRequestActionView.as_view(), name='verification-request-action'),
+    path('members/', BusinessMemberListView.as_view(), name='member-list'),
+    path('members/<uuid:user_id>/remove/', RemoveMemberView.as_view(), name='member-remove'),
 ]
