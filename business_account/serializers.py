@@ -8,7 +8,8 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password as django_validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 
-from .models import BusinessAccount
+from .models import BusinessAccount, VerificationRequest
+from users.models import User
 from .validators import (
     validate_password_strength,
     validate_email_format,
@@ -16,6 +17,41 @@ from .validators import (
 )
 from .utils import generate_otp, send_otp_email
 from users.exceptions import InvalidCredentialsException
+
+class UserSimpleSerializer(serializers.ModelSerializer):
+    """
+    Simple serializer for User to be used in verification-related lists
+    """
+    class Meta:
+        model = User
+        fields = ['id', 'email', 'first_name', 'last_name', 'profile_picture', 'is_verified']
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+        if request and instance.profile_picture:
+            representation['profile_picture'] = request.build_absolute_uri(instance.profile_picture.url)
+        return representation
+
+
+class VerificationRequestSerializer(serializers.ModelSerializer):
+    """
+    Serializer for VerificationRequest
+    """
+    user_details = UserSimpleSerializer(source='user', read_only=True)
+    business_name = serializers.CharField(source='business_account.business_name', read_only=True)
+
+    class Meta:
+        model = VerificationRequest
+        fields = [
+            'id', 'user', 'business_account', 'status', 
+            'created_at', 'updated_at', 'user_details', 'business_name'
+        ]
+        read_only_fields = ['id', 'status', 'created_at', 'updated_at', 'user_details', 'business_name']
+
+    def validate(self, attrs):
+        # Additional validation can be added here if needed
+        return attrs
 
 
 class BusinessAccountRegistrationSerializer(serializers.ModelSerializer):
@@ -212,9 +248,16 @@ class BusinessAccountProfileRegistrationSerializer(serializers.ModelSerializer):
         model = BusinessAccount
         fields = [
             'role_position', 'business_name', 'industry_category',
-            'business_email', 'website',
+            'business_email', 'website', 'headline', 'cover_photo',
             'address', 'address_line_2', 'city', 'state', 'zip_code'
         ]
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+        if request and instance.cover_photo:
+            representation['cover_photo'] = request.build_absolute_uri(instance.cover_photo.url)
+        return representation
 
     def validate_website(self, value):
         """
@@ -243,18 +286,30 @@ class BusinessAccountProfileSerializer(serializers.ModelSerializer):
     Serializer for business account profile (read and update)
     """
     website = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    account_type = serializers.SerializerMethodField()
 
     class Meta:
         model = BusinessAccount
         fields = [
             'id', 'email', 'role_position', 'business_name', 'industry_category',
-            'business_email', 'website',
+            'business_email', 'website', 'headline', 'cover_photo',
             'address', 'address_line_2', 'city', 'state', 'zip_code',
-            'is_email_verified', 'is_profile_complete', 'date_joined', 'last_login', 'updated_at'
+            'is_email_verified', 'is_profile_complete', 'account_type',
+            'date_joined', 'last_login', 'updated_at'
         ]
         read_only_fields = [
             'id', 'email', 'is_email_verified', 'is_profile_complete', 'date_joined', 'last_login', 'updated_at'
         ]
+
+    def get_account_type(self, obj):
+        return 'business'
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+        if request and instance.cover_photo:
+            representation['cover_photo'] = request.build_absolute_uri(instance.cover_photo.url)
+        return representation
 
     def validate_website(self, value):
         """
