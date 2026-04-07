@@ -75,7 +75,7 @@ class NeedPostListCreateView(generics.ListCreateAPIView):
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
+        serializer = self.get_serializer(queryset, many=True, context={'request': request})
         return standard_response(
             success=True,
             message="Need posts retrieved successfully",
@@ -104,7 +104,7 @@ class NeedPostRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
-        serializer = self.get_serializer(instance)
+        serializer = self.get_serializer(instance, context={'request': request})
         return standard_response(
             success=True,
             message="Need post retrieved successfully",
@@ -168,7 +168,7 @@ class OfferPostListCreateView(generics.ListCreateAPIView):
     
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
+        serializer = self.get_serializer(queryset, many=True, context={'request': request})
         return standard_response(
             success=True,
             message="Offer posts retrieved successfully",
@@ -197,7 +197,7 @@ class OfferPostRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
-        serializer = self.get_serializer(instance)
+        serializer = self.get_serializer(instance, context={'request': request})
         return standard_response(
             success=True,
             message="Offer post retrieved successfully",
@@ -267,10 +267,10 @@ class UserAndBusinessPostsListView(generics.ListAPIView):
 
         page = self.paginate_queryset(queryset)
         if page is not None:
-            serializer = self.get_serializer(page, many=True)
+            serializer = self.get_serializer(page, many=True, context={'request': request})
             return self.get_paginated_response(serializer.data)
 
-        serializer = self.get_serializer(queryset, many=True)
+        serializer = self.get_serializer(queryset, many=True, context={'request': request})
         return standard_response(
             success=True,
             message="All posts retrieved successfully",
@@ -308,7 +308,7 @@ class MyPostsListView(generics.ListAPIView):
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
+        serializer = self.get_serializer(queryset, many=True, context={'request': request})
         return standard_response(
             success=True,
             message="Your posts retrieved successfully",
@@ -338,7 +338,7 @@ class ReceivedProposalsListView(generics.ListAPIView):
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
+        serializer = self.get_serializer(queryset, many=True, context={'request': request})
         return standard_response(
             success=True,
             message="Received proposals retrieved successfully",
@@ -380,7 +380,7 @@ class NeedPostProposalCreateView(generics.CreateAPIView):
         if NeedPostProposal.objects.filter(need_post=need_post, proposer_content_type=user_content_type, proposer_object_id=user.id).exists():
             return standard_response(success=False, message="You have already submitted a proposal for this post.", status_code=status.HTTP_400_BAD_REQUEST)
 
-        serializer = self.get_serializer(data=request.data)
+        serializer = self.get_serializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         serializer.save(
             need_post=need_post,
@@ -473,7 +473,7 @@ class NeedPostProposalListView(generics.ListAPIView):
             return standard_response(success=False, message="You are not authorized to view proposals for this post.", status_code=status.HTTP_403_FORBIDDEN)
 
         queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
+        serializer = self.get_serializer(queryset, many=True, context={'request': request})
         return standard_response(
             success=True,
             message="Proposals retrieved successfully",
