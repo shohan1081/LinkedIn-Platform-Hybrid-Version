@@ -10,7 +10,7 @@ from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from django.utils import timezone
 from django.contrib.auth import get_user_model # To access User model for example in CustomTokenRefreshView
 
-from .models import BusinessAccount
+from .models import BusinessAccount, VerificationRequest
 from .serializers import (
     BusinessAccountRegistrationSerializer,
     BusinessAccountLoginSerializer,
@@ -22,17 +22,21 @@ from .serializers import (
     BusinessAccountProfileRegistrationSerializer,
     BusinessAccountProfileSerializer,
     PasswordResetOTPVerifySerializer,
+    VerificationRequestSerializer,
+    UserSimpleSerializer,
 )
-from .utils import (
+from users.utils import (
     generate_otp,
     send_otp_email,
     send_welcome_email,
     get_client_ip,
     get_user_agent,
+    get_full_media_url,
 )
 
 # Using the UserLoginHistory from users app for now, could create a BusinessAccountLoginHistory later
-from users.models import UserLoginHistory
+from users.models import UserLoginHistory, User
+from .backends import MultiModelJWTAuthentication
 
 
 def standard_response(success=True, message="", data=None, errors=None, status_code=status.HTTP_200_OK):
@@ -99,8 +103,10 @@ class BusinessAccountLoginView(APIView):
         if serializer.is_valid():
             business_account = serializer.validated_data['business_account']
             
-            # Generate JWT tokens
-            refresh = RefreshToken.for_user(business_account)
+            # Generate JWT tokens manually to avoid OutstandingToken crash
+            # (SimpleJWT blacklist only supports AUTH_USER_MODEL)
+            refresh = RefreshToken()
+            refresh['user_id'] = str(business_account.id)
             access_token = str(refresh.access_token)
             refresh_token = str(refresh)
             
@@ -121,10 +127,13 @@ class BusinessAccountLoginView(APIView):
                 success=True,
                 message="Login successful",
                 data={
+                    'account_type': 'business',
                     'business_account': {
                         'id': str(business_account.id),
                         'email': business_account.email,
                         'is_email_verified': business_account.is_email_verified,
+                        'is_profile_complete': business_account.is_profile_complete,
+                        'cover_photo': get_full_media_url(request, business_account.cover_photo),
                     },
                     'tokens': {
                         'access': access_token,
@@ -160,8 +169,10 @@ class VerifyOTPView(APIView):
                     business_account.clear_otp()
                     business_account.save()
 
-                    # Generate JWT tokens
-                    refresh = RefreshToken.for_user(business_account)
+                    # Generate JWT tokens manually to avoid OutstandingToken crash
+                    # (SimpleJWT blacklist only supports AUTH_USER_MODEL)
+                    refresh = RefreshToken()
+                    refresh['user_id'] = str(business_account.id)
                     access_token = str(refresh.access_token)
                     refresh_token = str(refresh)
 
@@ -169,10 +180,13 @@ class VerifyOTPView(APIView):
                         success=True,
                         message="OTP verified successfully. Business account logged in.",
                         data={
+                            'account_type': 'business',
                             'business_account': {
                                 'id': str(business_account.id),
                                 'email': business_account.email,
                                 'is_email_verified': business_account.is_email_verified,
+                                'is_profile_complete': business_account.is_profile_complete,
+                                'cover_photo': get_full_media_url(request, business_account.cover_photo),
                             },
                             'tokens': {
                                 'access': access_token,
@@ -387,7 +401,7 @@ class BusinessAccountProfileRegistrationView(generics.UpdateAPIView):
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer = self.get_serializer(instance, data=request.data, partial=partial, context={'request': request})
         if serializer.is_valid():
             self.perform_update(serializer)
             return standard_response(
@@ -420,7 +434,7 @@ class BusinessAccountProfileView(APIView):
         if not isinstance(business_account, BusinessAccount):
             return standard_response(success=False, message="Unauthorized access.", status_code=status.HTTP_403_FORBIDDEN)
         
-        serializer = self.serializer_class(business_account)
+        serializer = self.serializer_class(business_account, context={'request': request})
         return standard_response(
             success=True,
             message="Business account profile retrieved successfully",
@@ -433,7 +447,7 @@ class BusinessAccountProfileView(APIView):
         if not isinstance(business_account, BusinessAccount):
             return standard_response(success=False, message="Unauthorized access.", status_code=status.HTTP_403_FORBIDDEN)
         
-        serializer = self.serializer_class(business_account, data=request.data)
+        serializer = self.serializer_class(business_account, data=request.data, context={'request': request})
         if serializer.is_valid():
             serializer.save()
             return standard_response(
@@ -454,7 +468,7 @@ class BusinessAccountProfileView(APIView):
         if not isinstance(business_account, BusinessAccount):
             return standard_response(success=False, message="Unauthorized access.", status_code=status.HTTP_403_FORBIDDEN)
         
-        serializer = self.serializer_class(business_account, data=request.data, partial=True)
+        serializer = self.serializer_class(business_account, data=request.data, partial=True, context={'request': request})
         if serializer.is_valid():
             serializer.save()
             return standard_response(
@@ -521,11 +535,254 @@ class CustomBusinessTokenVerifyView(TokenVerifyView):
                 errors={'detail': str(e)},
                 status_code=status.HTTP_401_UNAUTHORIZED
             )
-        except InvalidToken as e:
+
+
+class BusinessAccountLogoutView(APIView):
+    """
+    API endpoint for business account logout
+    
+    POST /api/business/logout/
+    
+    Request body:
+    {
+        "refresh": "refresh_token_here"
+    }
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [BusinessAccountAuthentication]
+    
+    def post(self, request):
+        """Handle business account logout by blacklisting refresh token"""
+        try:
+            refresh_token = request.data.get('refresh')
+            
+            if not refresh_token:
+                return standard_response(
+                    success=False,
+                    message="Refresh token is required",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Blacklist only works for AUTH_USER_MODEL (User)
+            # BusinessAccount tokens are not tracked in the OutstandingToken table
+            # However, we still return success to indicate local logout is complete
+            if isinstance(request.user, User):
+                try:
+                    token = RefreshToken(refresh_token)
+                    token.blacklist()
+                except (TokenError, AttributeError):
+                    pass
+            
+            return standard_response(
+                success=True,
+                message="Logout successful",
+                status_code=status.HTTP_200_OK
+            )
+        
+        except TokenError:
             return standard_response(
                 success=False,
-                message="Invalid token",
-                data={'valid': False},
-                errors={'detail': str(e)},
-                status_code=status.HTTP_401_UNAUTHORIZED
+                message="Invalid or expired token",
+                status_code=status.HTTP_400_BAD_REQUEST
             )
+        except Exception as e:
+            return standard_response(
+                success=False,
+                message=f"Logout failed: {str(e)}",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+
+class VerificationRequestCreateView(APIView):
+    """
+    Standard user requests verification from a business account
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [MultiModelJWTAuthentication]
+    serializer_class = VerificationRequestSerializer
+
+    def post(self, request):
+        if not isinstance(request.user, User):
+            return standard_response(
+                success=False, 
+                message="Only standard users can request verification.", 
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+        
+        business_id = request.data.get('business_account')
+        if not business_id:
+            return standard_response(
+                success=False, 
+                message="Business account ID is required.", 
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            business = BusinessAccount.objects.get(id=business_id)
+        except BusinessAccount.DoesNotExist:
+            return standard_response(
+                success=False, 
+                message="Business account not found.", 
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        
+        if VerificationRequest.objects.filter(user=request.user, business_account=business).exists():
+            return standard_response(
+                success=False, 
+                message="Verification request already sent to this business.", 
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        verification_request = VerificationRequest.objects.create(
+            user=request.user,
+            business_account=business,
+            status='pending'
+        )
+        
+        serializer = self.serializer_class(verification_request)
+        return standard_response(
+            success=True,
+            message="Verification request sent successfully.",
+            data=serializer.data,
+            status_code=status.HTTP_201_CREATED
+        )
+
+
+class VerificationRequestListView(APIView):
+    """
+    Business account sees list of verification requests received
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [BusinessAccountAuthentication]
+    serializer_class = VerificationRequestSerializer
+
+    def get(self, request):
+        if not isinstance(request.user, BusinessAccount):
+             return standard_response(
+                 success=False, 
+                 message="Only business accounts can access this.", 
+                 status_code=status.HTTP_403_FORBIDDEN
+             )
+        
+        requests = VerificationRequest.objects.filter(business_account=request.user, status='pending')
+        serializer = self.serializer_class(requests, many=True)
+        return standard_response(
+            success=True,
+            message="Verification requests retrieved successfully.",
+            data=serializer.data
+        )
+
+
+class VerificationRequestActionView(APIView):
+    """
+    Business account accepts or rejects a verification request
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [BusinessAccountAuthentication]
+
+    def post(self, request, pk):
+        if not isinstance(request.user, BusinessAccount):
+             return standard_response(
+                 success=False, 
+                 message="Only business accounts can access this.", 
+                 status_code=status.HTTP_403_FORBIDDEN
+             )
+        
+        try:
+            verification_request = VerificationRequest.objects.get(id=pk, business_account=request.user)
+        except VerificationRequest.DoesNotExist:
+            return standard_response(
+                success=False, 
+                message="Verification request not found.", 
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        
+        action = request.data.get('action') # 'accept' or 'reject'
+        if action == 'accept':
+            verification_request.status = 'accepted'
+            verification_request.save()
+            
+            # Update user's is_verified status
+            user = verification_request.user
+            user.is_verified = True
+            user.save(update_fields=['is_verified'])
+            
+            return standard_response(success=True, message="Verification request accepted. User is now verified.")
+        elif action == 'reject':
+            verification_request.status = 'rejected'
+            verification_request.save()
+            return standard_response(success=True, message="Verification request rejected.")
+        else:
+            return standard_response(
+                success=False, 
+                message="Invalid action. Use 'accept' or 'reject'.", 
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+
+class BusinessMemberListView(APIView):
+    """
+    Business account sees list of users they have verified
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [BusinessAccountAuthentication]
+    serializer_class = UserSimpleSerializer
+
+    def get(self, request):
+        if not isinstance(request.user, BusinessAccount):
+             return standard_response(
+                 success=False, 
+                 message="Only business accounts can access this.", 
+                 status_code=status.HTTP_403_FORBIDDEN
+             )
+        
+        # Members are users who have an accepted verification request with this business
+        memberships = VerificationRequest.objects.filter(business_account=request.user, status='accepted')
+        users = [membership.user for membership in memberships]
+        serializer = self.serializer_class(users, many=True)
+        return standard_response(
+            success=True,
+            message="Member list retrieved successfully.",
+            data=serializer.data
+        )
+
+
+class RemoveMemberView(APIView):
+    """
+    Business account removes a user from their verified member list
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [BusinessAccountAuthentication]
+
+    def post(self, request, user_id):
+        if not isinstance(request.user, BusinessAccount):
+             return standard_response(
+                 success=False, 
+                 message="Only business accounts can access this.", 
+                 status_code=status.HTTP_403_FORBIDDEN
+             )
+        
+        try:
+            membership = VerificationRequest.objects.get(
+                business_account=request.user, 
+                user_id=user_id, 
+                status='accepted'
+            )
+        except VerificationRequest.DoesNotExist:
+            return standard_response(
+                success=False, 
+                message="Member not found.", 
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Delete the membership
+        membership.delete()
+        
+        # Check if user is still verified by any OTHER business.
+        # If not, set user.is_verified = False.
+        user = User.objects.get(id=user_id)
+        if not VerificationRequest.objects.filter(user=user, status='accepted').exists():
+            user.is_verified = False
+            user.save(update_fields=['is_verified'])
+
+        return standard_response(success=True, message="Member removed successfully.")
