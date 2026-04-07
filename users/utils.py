@@ -260,17 +260,44 @@ def calculate_age(date_of_birth):
 def validate_age(date_of_birth, min_age=13):
     """
     Validate if user meets minimum age requirement
-    
+
     Args:
         date_of_birth (date): Date of birth
         min_age (int): Minimum age required (default 13)
-        
+
     Returns:
         bool: True if user meets age requirement, False otherwise
     """
     age = calculate_age(date_of_birth)
-    
+
     if age is None:
         return False
-    
+
     return age >= min_age
+
+def get_full_media_url(request, media_file):
+    """
+    Generate absolute URL for a media file.
+
+    Args:
+        request: Django request object
+        media_file: FileField/ImageField instance or URL string
+
+    Returns:
+        str: Absolute URL to the media file or None
+    """
+    if not media_file:
+        return None
+
+    try:
+        # If it's a FileField/ImageField object
+        url = media_file.url
+    except AttributeError:
+        # If it's already a URL string
+        url = str(media_file)
+
+    if request:
+        return request.build_absolute_uri(url)
+
+    # Fallback if no request is provided
+    return url
