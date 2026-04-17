@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from django.contrib.contenttypes.models import ContentType
-from .models import Tag, Image, NeedPost, OfferPost, NeedPostProposal
+from .models import Tag, Image, NeedPost, OfferPost, NeedPostProposal, OfferPostProposal
 from users.models import User
 from business_account.models import BusinessAccount
 
@@ -28,6 +28,7 @@ class ImageSerializer(serializers.ModelSerializer):
 class BasePostSerializer(serializers.ModelSerializer):
     author_id = serializers.SerializerMethodField()
     author_type = serializers.SerializerMethodField()
+    author_details = serializers.SerializerMethodField()
     
     # Nested ImageSerializer for output (read-only)
     images = ImageSerializer(many=True, read_only=True)
@@ -44,7 +45,7 @@ class BasePostSerializer(serializers.ModelSerializer):
     class Meta:
         model = NeedPost # This will be overridden by subclasses (NeedPostSerializer, OfferPostSerializer)
         fields = [
-            'id', 'author_id', 'author_type', 'title', 'description', 
+            'id', 'author_id', 'author_type', 'author_details', 'title', 'description', 
             'tags', 'tags_detail', 'images', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'author_id', 'author_type', 'created_at', 'updated_at']
@@ -58,6 +59,40 @@ class BasePostSerializer(serializers.ModelSerializer):
         elif isinstance(obj.author, BusinessAccount):
             return 'business_account'
         return None
+
+    def get_author_details(self, obj):
+        author = obj.author
+        if not author:
+            return None
+        
+        request = self.context.get('request')
+        details = {
+            'name': '',
+            'profile_image': None,
+            'location': ''
+        }
+        
+        if isinstance(author, User):
+            details['name'] = f"{author.first_name} {author.last_name}".strip()
+            if author.profile_picture:
+                details['profile_image'] = request.build_absolute_uri(author.profile_picture.url) if request else author.profile_picture.url
+            
+            location_parts = [author.city, author.country]
+            details['location'] = ", ".join([p for p in location_parts if p])
+            
+        elif isinstance(author, BusinessAccount):
+            details['name'] = author.business_name or author.email
+            # BusinessAccount uses cover_photo as it doesn't have profile_picture
+            if author.cover_photo:
+                details['profile_image'] = request.build_absolute_uri(author.cover_photo.url) if request else author.cover_photo.url
+            
+            location_parts = [author.city, ''] # BusinessAccount doesn't seem to have country field in first 100 lines, checking again
+            # I will use city and state for now, or check if country exists.
+            # Looking back at BusinessAccount model, it had city, state, zip_code but NOT country.
+            location_parts = [author.city, author.state]
+            details['location'] = ", ".join([p for p in location_parts if p])
+            
+        return details
 
     def _handle_tags(self, tag_names, post_instance):
         if tag_names is not None:
@@ -150,6 +185,7 @@ class UserAndBusinessPostListSerializer(serializers.Serializer):
     id = serializers.UUIDField(read_only=True)
     author_id = serializers.SerializerMethodField()
     author_type = serializers.SerializerMethodField()
+    author_details = serializers.SerializerMethodField()
     title = serializers.CharField(read_only=True)
     description = serializers.CharField(read_only=True)
     tags_detail = TagSerializer(many=True, read_only=True, source='tags')
@@ -174,6 +210,36 @@ class UserAndBusinessPostListSerializer(serializers.Serializer):
         elif isinstance(obj.author, BusinessAccount):
             return 'business_account'
         return None
+
+    def get_author_details(self, obj):
+        author = obj.author
+        if not author:
+            return None
+        
+        request = self.context.get('request')
+        details = {
+            'name': '',
+            'profile_image': None,
+            'location': ''
+        }
+        
+        if isinstance(author, User):
+            details['name'] = f"{author.first_name} {author.last_name}".strip()
+            if author.profile_picture:
+                details['profile_image'] = request.build_absolute_uri(author.profile_picture.url) if request else author.profile_picture.url
+            
+            location_parts = [author.city, author.country]
+            details['location'] = ", ".join([p for p in location_parts if p])
+            
+        elif isinstance(author, BusinessAccount):
+            details['name'] = author.business_name or author.email
+            if author.cover_photo:
+                details['profile_image'] = request.build_absolute_uri(author.cover_photo.url) if request else author.cover_photo.url
+            
+            location_parts = [author.city, author.state]
+            details['location'] = ", ".join([p for p in location_parts if p])
+            
+        return details
 
     def get_post_type(self, obj):
         if isinstance(obj, NeedPost):
@@ -214,4 +280,34 @@ class NeedPostProposalSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if request and instance.cv_file:
             representation['cv_file'] = request.build_absolute_uri(instance.cv_file.url)
+        return representation
+
+class OfferPostProposalSerializer(serializers.ModelSerializer):
+    proposer_id = serializers.SerializerMethodField()
+    proposer_type = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OfferPostProposal
+        fields = [
+            'id', 'offer_post', 'proposer_id', 'proposer_type', 
+            'subject', 'message', 'attachment', 'budget', 'expected_delivery', 
+            'status', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'offer_post', 'proposer_id', 'proposer_type', 'status', 'created_at', 'updated_at']
+
+    def get_proposer_id(self, obj):
+        return str(obj.proposer.id) if obj.proposer else None
+
+    def get_proposer_type(self, obj):
+        if isinstance(obj.proposer, User):
+            return 'user'
+        elif isinstance(obj.proposer, BusinessAccount):
+            return 'business_account'
+        return None
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+        if request and instance.attachment:
+            representation['attachment'] = request.build_absolute_uri(instance.attachment.url)
         return representation

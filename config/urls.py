@@ -31,6 +31,8 @@ urlpatterns = [
     path('api/business-account/', include('business_account.urls')),
     # Posts app
     path('api/posts/', include('posts.urls')),
+    # Chat app
+    path('api/chat/', include('chat.urls')),
     # Temporary test upload endpoint
     path('api/test-upload/', temp_views.TestFileUploadView.as_view(), name='test-file-upload'),
 ]

@@ -144,3 +144,39 @@ class OfferPost(Post):
     class Meta:
         verbose_name = _("Offer Post")
         verbose_name_plural = _("Offer Posts")
+
+class OfferPostProposal(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('accepted', 'Accepted'),
+        ('rejected', 'Rejected'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    offer_post = models.ForeignKey(OfferPost, on_delete=models.CASCADE, related_name='proposals')
+    
+    # Proposer can be User or BusinessAccount
+    proposer_content_type = models.ForeignKey(
+        ContentType, 
+        on_delete=models.CASCADE,
+    )
+    proposer_object_id = models.UUIDField()
+    proposer = GenericForeignKey('proposer_content_type', 'proposer_object_id')
+
+    subject = models.CharField(max_length=255, blank=True, null=True, help_text=_("Subject of the proposal"))
+    message = models.TextField(blank=True, null=True, help_text=_("Message or inquiry about the offer"))
+    attachment = models.FileField(upload_to='proposals/attachments/', blank=True, null=True, help_text=_("Any supporting document or requirement brief"))
+    budget = models.CharField(max_length=100, blank=True, null=True, help_text=_("Proposed budget (e.g., $100, negotiable)"))
+    expected_delivery = models.CharField(max_length=100, blank=True, null=True, help_text=_("Desired timeline or delivery date"))
+    
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('offer_post', 'proposer_content_type', 'proposer_object_id')
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Proposal for {self.offer_post.title} by {self.proposer}"

@@ -321,3 +321,80 @@ class UserLoginHistory(models.Model):
     
     def __str__(self):
         return f"{self.user.email} - {self.login_time}"
+
+
+class Education(models.Model):
+    """
+    Model to store user's education history
+    Only applicable for regular Users, not BusinessAccounts
+    """
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='educations',
+        help_text=_("User this education belongs to")
+    )
+    school = models.CharField(_('school'), max_length=255)
+    degree = models.CharField(_('degree'), max_length=255)
+    field_of_study = models.CharField(_('field of study'), max_length=255)
+    grade = models.CharField(_('grade'), max_length=100, blank=True, null=True)
+    activities_and_societies = models.TextField(_('activities and societies'), blank=True, null=True)
+    description = models.TextField(_('description'), blank=True, null=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _('education')
+        verbose_name_plural = _('educations')
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.degree} at {self.school} - {self.user.email}"
+
+
+class Experience(models.Model):
+    """
+    Model to store user's work experience
+    Only applicable for regular Users, not BusinessAccounts
+    """
+    EMPLOYMENT_TYPE_CHOICES = [
+        ('full_time', 'Full-time'),
+        ('part_time', 'Part-time'),
+        ('self_employed', 'Self-employed'),
+        ('freelance', 'Freelance'),
+        ('internship', 'Internship'),
+        ('trainee', 'Trainee'),
+    ]
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='experiences',
+        help_text=_("User this experience belongs to")
+    )
+    title = models.CharField(_('title'), max_length=255)
+    company = models.CharField(_('company'), max_length=255)
+    employment_type = models.CharField(
+        _('employment type'),
+        max_length=50,
+        choices=EMPLOYMENT_TYPE_CHOICES,
+        blank=True,
+        null=True
+    )
+    start_date = models.DateField(_('start date'))
+    end_date = models.DateField(_('end date'), blank=True, null=True)
+    location = models.CharField(_('location'), max_length=255, blank=True, null=True)
+    description = models.TextField(_('description'), blank=True, null=True)
+    skills = models.JSONField(_('skills'), default=list, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _('experience')
+        verbose_name_plural = _('experiences')
+        ordering = ['-start_date']
+
+    def __str__(self):
+        return f"{self.title} at {self.company} - {self.user.email}"

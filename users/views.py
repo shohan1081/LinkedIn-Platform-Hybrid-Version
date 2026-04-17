@@ -38,6 +38,9 @@ from .serializers import (
     LanguagePreferenceSerializer,
     UserProfileRegistrationSerializer,
     MultiModelTokenRefreshSerializer,
+    EducationSerializer,
+    ExperienceSerializer,
+    SupportTicketSerializer,
 )
 from .utils import (
     send_welcome_email,
@@ -46,7 +49,195 @@ from .utils import (
     get_user_agent,
     get_full_media_url,
 )
-from .models import UserLoginHistory, AccountDeletionRequest, ProfileDataDeletionRequest
+from .models import UserLoginHistory, AccountDeletionRequest, ProfileDataDeletionRequest, Education, Experience
+
+class SupportTicketView(APIView):
+    """
+    API endpoint for sending support tickets to admin.
+    Accessible by any authenticated user (regular or business).
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+    serializer_class = SupportTicketSerializer
+
+    def post(self, request):
+        serializer = self.serializer_class(data=request.data)
+        if serializer.is_valid():
+            email_address = serializer.validated_data['email_address']
+            subject = serializer.validated_data['subject']
+            message = serializer.validated_data['message']
+            
+            # Prepare email content
+            admin_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'admin@example.com')
+            email_subject = f"Support Request: {subject}"
+            email_message = f"From: {email_address}\n\nMessage:\n{message}"
+            
+            try:
+                send_mail(
+                    email_subject,
+                    email_message,
+                    settings.DEFAULT_FROM_EMAIL,
+                    [admin_email],
+                    fail_silently=False,
+                )
+                return standard_response(
+                    success=True,
+                    message="Support request sent successfully. We will get back to you soon."
+                )
+            except Exception as e:
+                return standard_response(
+                    success=False,
+                    message=f"Failed to send support request: {str(e)}",
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        
+        return standard_response(
+            success=False,
+            message="Invalid data provided",
+            errors=serializer.errors,
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+
+class IsRegularUser(IsAuthenticated):
+    """
+    Permission to check if the user is a regular user and not a business account
+    """
+    def has_permission(self, request, view):
+        is_authenticated = super().has_permission(request, view)
+        if not is_authenticated:
+            return False
+        
+        # Check if the user is an instance of the regular User model
+        # BusinessAccount instances will return False
+        return isinstance(request.user, User)
+
+class EducationListCreateView(APIView):
+    permission_classes = [IsRegularUser]
+    authentication_classes = [JWTAuthentication]
+
+    def get(self, request):
+        educations = Education.objects.filter(user=request.user)
+        serializer = EducationSerializer(educations, many=True)
+        return standard_response(
+            success=True,
+            message="Educations retrieved successfully",
+            data=serializer.data
+        )
+
+    def post(self, request):
+        serializer = EducationSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            serializer.save()
+            return standard_response(
+                success=True,
+                message="Education added successfully",
+                data=serializer.data,
+                status_code=status.HTTP_201_CREATED
+            )
+        return standard_response(
+            success=False,
+            message="Failed to add education",
+            errors=serializer.errors,
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+
+class EducationDetailView(APIView):
+    permission_classes = [IsRegularUser]
+    authentication_classes = [JWTAuthentication]
+
+    def get_object(self, pk, user):
+        try:
+            return Education.objects.get(pk=pk, user=user)
+        except Education.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        education = self.get_object(pk, request.user)
+        if not education:
+            return standard_response(success=False, message="Education not found", status_code=status.HTTP_404_NOT_FOUND)
+        serializer = EducationSerializer(education)
+        return standard_response(success=True, message="Education retrieved", data=serializer.data)
+
+    def put(self, request, pk):
+        education = self.get_object(pk, request.user)
+        if not education:
+            return standard_response(success=False, message="Education not found", status_code=status.HTTP_404_NOT_FOUND)
+        serializer = EducationSerializer(education, data=request.data, partial=True, context={'request': request})
+        if serializer.is_valid():
+            serializer.save()
+            return standard_response(success=True, message="Education updated", data=serializer.data)
+        return standard_response(success=False, message="Update failed", errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, pk):
+        education = self.get_object(pk, request.user)
+        if not education:
+            return standard_response(success=False, message="Education not found", status_code=status.HTTP_404_NOT_FOUND)
+        education.delete()
+        return standard_response(success=True, message="Education deleted successfully")
+
+class ExperienceListCreateView(APIView):
+    permission_classes = [IsRegularUser]
+    authentication_classes = [JWTAuthentication]
+
+    def get(self, request):
+        experiences = Experience.objects.filter(user=request.user)
+        serializer = ExperienceSerializer(experiences, many=True)
+        return standard_response(
+            success=True,
+            message="Experiences retrieved successfully",
+            data=serializer.data
+        )
+
+    def post(self, request):
+        serializer = ExperienceSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            serializer.save()
+            return standard_response(
+                success=True,
+                message="Experience added successfully",
+                data=serializer.data,
+                status_code=status.HTTP_201_CREATED
+            )
+        return standard_response(
+            success=False,
+            message="Failed to add experience",
+            errors=serializer.errors,
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+
+class ExperienceDetailView(APIView):
+    permission_classes = [IsRegularUser]
+    authentication_classes = [JWTAuthentication]
+
+    def get_object(self, pk, user):
+        try:
+            return Experience.objects.get(pk=pk, user=user)
+        except Experience.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        experience = self.get_object(pk, request.user)
+        if not experience:
+            return standard_response(success=False, message="Experience not found", status_code=status.HTTP_404_NOT_FOUND)
+        serializer = ExperienceSerializer(experience)
+        return standard_response(success=True, message="Experience retrieved", data=serializer.data)
+
+    def put(self, request, pk):
+        experience = self.get_object(pk, request.user)
+        if not experience:
+            return standard_response(success=False, message="Experience not found", status_code=status.HTTP_404_NOT_FOUND)
+        serializer = ExperienceSerializer(experience, data=request.data, partial=True, context={'request': request})
+        if serializer.is_valid():
+            serializer.save()
+            return standard_response(success=True, message="Experience updated", data=serializer.data)
+        return standard_response(success=False, message="Update failed", errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, pk):
+        experience = self.get_object(pk, request.user)
+        if not experience:
+            return standard_response(success=False, message="Experience not found", status_code=status.HTTP_404_NOT_FOUND)
+        experience.delete()
+        return standard_response(success=True, message="Experience deleted successfully")
 from django.shortcuts import render
 
 @csrf_exempt

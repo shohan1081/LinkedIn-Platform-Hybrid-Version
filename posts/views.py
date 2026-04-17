@@ -6,15 +6,18 @@ from business_account.backends import BusinessAccountAuthentication, MultiModelJ
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.db.models import Q
 from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import ValidationError
 
-from .models import NeedPost, OfferPost, Tag, Image, NeedPostProposal
+from .models import NeedPost, OfferPost, Tag, Image, NeedPostProposal, OfferPostProposal
 from .serializers import (
     NeedPostSerializer,
     OfferPostSerializer,
     UserAndBusinessPostListSerializer,
     TagSerializer,
     NeedPostProposalSerializer,
+    OfferPostProposalSerializer,
 )
+from chat.models import Conversation, Message
 from users.models import User
 from business_account.models import BusinessAccount
 
@@ -317,32 +320,57 @@ class MyPostsListView(generics.ListAPIView):
 
 class ReceivedProposalsListView(generics.ListAPIView):
     """
-    Returns all proposals received for all NeedPosts created by the currently authenticated user.
+    Returns all proposals received for all posts (Need and Offer) created by the currently authenticated user.
     """
-    serializer_class = NeedPostProposalSerializer
     authentication_classes = [MultiModelJWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        # We'll handle combining and serializing in the list method
+        return None
+
+    def list(self, request, *args, **kwargs):
         user = self.request.user
         user_content_type = ContentType.objects.get_for_model(user)
         
-        # Find all NeedPosts authored by the current user
-        my_posts_ids = NeedPost.objects.filter(
+        # Need Post Proposals
+        my_needs_ids = NeedPost.objects.filter(
             author_content_type=user_content_type,
             author_object_id=user.id
         ).values_list('id', flat=True)
+        need_proposals = NeedPostProposal.objects.filter(need_post_id__in=my_needs_ids)
         
-        # Return proposals for those posts
-        return NeedPostProposal.objects.filter(need_post_id__in=my_posts_ids).order_by('-created_at')
+        # Offer Post Proposals
+        my_offers_ids = OfferPost.objects.filter(
+            author_content_type=user_content_type,
+            author_object_id=user.id
+        ).values_list('id', flat=True)
+        offer_proposals = OfferPostProposal.objects.filter(offer_post_id__in=my_offers_ids)
 
-    def list(self, request, *args, **kwargs):
-        queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True, context={'request': request})
+        # Combine and sort
+        combined = sorted(
+            list(need_proposals) + list(offer_proposals),
+            key=lambda p: p.created_at,
+            reverse=True
+        )
+
+        # Manual serialization
+        data = []
+        for p in combined:
+            if isinstance(p, NeedPostProposal):
+                ser = NeedPostProposalSerializer(p, context={'request': request})
+                item = ser.data
+                item['proposal_type'] = 'need'
+            else:
+                ser = OfferPostProposalSerializer(p, context={'request': request})
+                item = ser.data
+                item['proposal_type'] = 'offer'
+            data.append(item)
+
         return standard_response(
             success=True,
             message="Received proposals retrieved successfully",
-            data=serializer.data
+            data=data
         )
 
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -382,10 +410,29 @@ class NeedPostProposalCreateView(generics.CreateAPIView):
 
         serializer = self.get_serializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
-        serializer.save(
+        proposal = serializer.save(
             need_post=need_post,
             proposer_content_type=user_content_type,
             proposer_object_id=user.id
+        )
+
+        # Create a Message Request (Conversation)
+        conversation, created = Conversation.objects.get_or_create(
+            part1_content_type=need_post.author_content_type,
+            part1_object_id=need_post.author_object_id,
+            part2_content_type=user_content_type,
+            part2_object_id=user.id,
+            post_content_type=ContentType.objects.get_for_model(need_post),
+            post_object_id=need_post.id
+        )
+        
+        # Add initial message
+        initial_text = f"Connect Request for: {need_post.title}\n\nSubject: {proposal.subject}\nMessage: {proposal.message}"
+        Message.objects.create(
+            conversation=conversation,
+            sender_content_type=user_content_type,
+            sender_object_id=user.id,
+            text=initial_text
         )
 
         return standard_response(
@@ -395,10 +442,11 @@ class NeedPostProposalCreateView(generics.CreateAPIView):
             status_code=status.HTTP_201_CREATED
         )
 
-class NeedPostProposalCancelView(APIView):
+class ProposalCancelView(APIView):
     """
     API endpoint to cancel a proposal.
-    Supports passing either the Proposal ID or the NeedPost ID.
+    Supports both NeedPost and OfferPost proposals.
+    Supports passing either the Proposal ID or the Post ID.
     """
     authentication_classes = [MultiModelJWTAuthentication]
     permission_classes = [IsAuthenticated]
@@ -407,38 +455,49 @@ class NeedPostProposalCancelView(APIView):
         # Force evaluation
         user = request.user
         user_content_type = ContentType.objects.get_for_model(user)
-        
-        # We search for the proposal using the target ID as a string to avoid 
-        # SQLite conversion crashes on old/invalid data in the table.
         target_id_str = str(pk)
         
-        # First, find all proposals by this user
-        proposals_qs = NeedPostProposal.objects.filter(
+        # 1. Search in NeedPostProposals
+        need_proposal = None
+        need_proposals_qs = NeedPostProposal.objects.filter(
             proposer_content_type=user_content_type,
             proposer_object_id=user.id
         )
-        
-        # Manually find the matching one to be 100% safe from DB-level conversion errors
-        proposal = None
-        for p in proposals_qs:
+        for p in need_proposals_qs:
             if str(p.id) == target_id_str or str(p.need_post_id) == target_id_str:
-                proposal = p
+                need_proposal = p
                 break
+        
+        if need_proposal:
+            if need_proposal.status == 'cancelled':
+                return standard_response(success=False, message="Proposal is already cancelled.", status_code=status.HTTP_400_BAD_REQUEST)
+            need_proposal.status = 'cancelled'
+            need_proposal.save()
+            return standard_response(success=True, message="Proposal cancelled successfully.")
 
-        if not proposal:
-            return standard_response(
-                success=False, 
-                message="Proposal not found or you are not authorized to cancel it.", 
-                status_code=status.HTTP_404_NOT_FOUND
-            )
+        # 2. Search in OfferPostProposals
+        offer_proposal = None
+        offer_proposals_qs = OfferPostProposal.objects.filter(
+            proposer_content_type=user_content_type,
+            proposer_object_id=user.id
+        )
+        for p in offer_proposals_qs:
+            if str(p.id) == target_id_str or str(p.offer_post_id) == target_id_str:
+                offer_proposal = p
+                break
+        
+        if offer_proposal:
+            if offer_proposal.status == 'cancelled':
+                return standard_response(success=False, message="Inquiry is already cancelled.", status_code=status.HTTP_400_BAD_REQUEST)
+            offer_proposal.status = 'cancelled'
+            offer_proposal.save()
+            return standard_response(success=True, message="Inquiry cancelled successfully.")
 
-        if proposal.status == 'cancelled':
-            return standard_response(success=False, message="Proposal is already cancelled.", status_code=status.HTTP_400_BAD_REQUEST)
-
-        proposal.status = 'cancelled'
-        proposal.save()
-
-        return standard_response(success=True, message="Proposal cancelled successfully.")
+        return standard_response(
+            success=False, 
+            message="Proposal not found or you are not authorized to cancel it.", 
+            status_code=status.HTTP_404_NOT_FOUND
+        )
 
 class NeedPostProposalListView(generics.ListAPIView):
     """
@@ -479,3 +538,272 @@ class NeedPostProposalListView(generics.ListAPIView):
             message="Proposals retrieved successfully",
             data=serializer.data
         )
+
+class SinglePostDetailView(generics.RetrieveAPIView):
+    """
+    Retrieve any post (Need or Offer) by its UUID.
+    This works for both types and is accessible to any authenticated user.
+    """
+    serializer_class = UserAndBusinessPostListSerializer
+    authentication_classes = [MultiModelJWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        pk = self.kwargs.get('pk')
+        
+        # Try NeedPost
+        try:
+            return NeedPost.objects.get(pk=pk)
+        except NeedPost.DoesNotExist:
+            pass
+            
+        # Try OfferPost
+        try:
+            return OfferPost.objects.get(pk=pk)
+        except OfferPost.DoesNotExist:
+            raise status.HTTP_404_NOT_FOUND
+
+    def retrieve(self, request, *args, **kwargs):
+        try:
+            instance = self.get_object()
+            if isinstance(instance, int) and instance == status.HTTP_404_NOT_FOUND:
+                 return standard_response(success=False, message="Post not found.", status_code=status.HTTP_404_NOT_FOUND)
+        except Exception:
+             return standard_response(success=False, message="Post not found.", status_code=status.HTTP_404_NOT_FOUND)
+
+        serializer = self.get_serializer(instance, context={'request': request})
+        return standard_response(
+            success=True,
+            message="Post details retrieved successfully",
+            data=serializer.data
+        )
+
+from .models import OfferPostProposal
+from .serializers import OfferPostProposalSerializer
+
+class OfferPostProposalCreateView(generics.CreateAPIView):
+    """
+    API endpoint to submit a proposal/inquiry for an OfferPost.
+    """
+    serializer_class = OfferPostProposalSerializer
+    authentication_classes = [MultiModelJWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def create(self, request, *args, **kwargs):
+        offer_post_id = self.kwargs.get('pk')
+        try:
+            offer_post = OfferPost.objects.get(pk=offer_post_id)
+        except OfferPost.DoesNotExist:
+            return standard_response(success=False, message="Offer post not found.", status_code=status.HTTP_404_NOT_FOUND)
+
+        # Force evaluation and get clean user object/ID/ContentType
+        user = request.user
+        user_id = str(user.id)
+        user_content_type = ContentType.objects.get_for_model(user)
+
+        # Explicitly check if the requesting user is the author
+        author_id = str(offer_post.author_object_id)
+        author_content_type = offer_post.author_content_type
+
+        if author_content_type == user_content_type and author_id == user_id:
+            return standard_response(success=False, message="You cannot propose to your own offer.", status_code=status.HTTP_400_BAD_REQUEST)
+
+        # Check if already proposed
+        if OfferPostProposal.objects.filter(offer_post=offer_post, proposer_content_type=user_content_type, proposer_object_id=user.id).exists():
+            return standard_response(success=False, message="You have already submitted an inquiry for this offer.", status_code=status.HTTP_400_BAD_REQUEST)
+
+        serializer = self.get_serializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        proposal = serializer.save(
+            offer_post=offer_post,
+            proposer_content_type=user_content_type,
+            proposer_object_id=user.id
+        )
+
+        # Create a Message Request (Conversation)
+        conversation, created = Conversation.objects.get_or_create(
+            part1_content_type=offer_post.author_content_type,
+            part1_object_id=offer_post.author_object_id,
+            part2_content_type=user_content_type,
+            part2_object_id=user.id,
+            post_content_type=ContentType.objects.get_for_model(offer_post),
+            post_object_id=offer_post.id
+        )
+        
+        # Add initial message
+        initial_text = f"Inquiry for: {offer_post.title}\n\nSubject: {proposal.subject}\nMessage: {proposal.message}"
+        if proposal.budget:
+            initial_text += f"\nBudget: {proposal.budget}"
+        if proposal.expected_delivery:
+            initial_text += f"\nExpected Delivery: {proposal.expected_delivery}"
+            
+        Message.objects.create(
+            conversation=conversation,
+            sender_content_type=user_content_type,
+            sender_object_id=user.id,
+            text=initial_text
+        )
+
+        return standard_response(
+            success=True,
+            message="Proposal/Inquiry submitted successfully",
+            data=serializer.data,
+            status_code=status.HTTP_201_CREATED
+        )
+
+class OfferPostProposalListView(generics.ListAPIView):
+    """
+    API endpoint to list proposals for a specific OfferPost.
+    Only the author of the post can see all proposals.
+    """
+    serializer_class = OfferPostProposalSerializer
+    authentication_classes = [MultiModelJWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        offer_post_id = self.kwargs.get('pk')
+        return OfferPostProposal.objects.filter(offer_post_id=offer_post_id)
+
+    def list(self, request, *args, **kwargs):
+        offer_post_id = self.kwargs.get('pk')
+        try:
+            offer_post = OfferPost.objects.get(pk=offer_post_id)
+        except OfferPost.DoesNotExist:
+            return standard_response(success=False, message="Offer post not found.", status_code=status.HTTP_404_NOT_FOUND)
+
+        # Force evaluation
+        user = request.user
+        user_id = str(user.id)
+        user_content_type = ContentType.objects.get_for_model(user)
+
+        # Explicitly check if the requesting user is the author
+        author_id = str(offer_post.author_object_id)
+        author_content_type = offer_post.author_content_type
+
+        if author_content_type != user_content_type or author_id != user_id:
+            return standard_response(success=False, message="You are not authorized to view proposals for this offer.", status_code=status.HTTP_403_FORBIDDEN)
+
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True, context={'request': request})
+        return standard_response(
+            success=True,
+            message="Proposals retrieved successfully",
+            data=serializer.data
+        )
+
+class ProposalActionView(APIView):
+    """
+    API endpoint to accept or reject a proposal (for both Need and Offer posts).
+    Only the author of the post can perform this action.
+    """
+    authentication_classes = [MultiModelJWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        # Force evaluation
+        user = request.user
+        user_id = str(user.id)
+        user_content_type = ContentType.objects.get_for_model(user)
+        target_id_str = str(pk)
+
+        action = request.data.get('action') # 'accept' or 'reject'
+        if action not in ['accept', 'reject']:
+            return standard_response(success=False, message="Invalid action. Use 'accept' or 'reject'.", status_code=status.HTTP_400_BAD_REQUEST)
+
+        # 1. Search in NeedPostProposals
+        need_proposal = None
+        try:
+            need_proposal = NeedPostProposal.objects.get(pk=pk)
+            # Check if the requesting user is the author of the NEED POST
+            need_post = need_proposal.need_post
+            author_id = str(need_post.author_object_id)
+            author_content_type = need_post.author_content_type
+
+            if author_content_type != user_content_type or author_id != user_id:
+                return standard_response(success=False, message="You are not authorized to perform this action.", status_code=status.HTTP_403_FORBIDDEN)
+            
+            need_proposal.status = 'accepted' if action == 'accept' else 'rejected'
+            need_proposal.save()
+
+            if action == 'accept':
+                # Update status to active
+                conv_qs = Conversation.objects.filter(
+                    part1_content_type=need_post.author_content_type,
+                    part1_object_id=need_post.author_object_id,
+                    part2_content_type=need_proposal.proposer_content_type,
+                    part2_object_id=need_proposal.proposer_object_id,
+                    post_content_type=ContentType.objects.get_for_model(need_post),
+                    post_object_id=need_post.id
+                )
+                conv_qs.update(status='active')
+                
+                # Send welcome message from Author to Proposer
+                conversation = conv_qs.first()
+                if conversation:
+                    welcome_text = f"Hello! I have accepted your connect request for '{need_post.title}'. Let's discuss further."
+                    Message.objects.create(
+                        conversation=conversation,
+                        sender_content_type=need_post.author_content_type,
+                        sender_object_id=need_post.author_object_id,
+                        text=welcome_text
+                    )
+                    
+                    return standard_response(
+                        success=True, 
+                        message="Proposal accepted successfully.", 
+                        data={"conversation_id": str(conversation.id)}
+                    )
+
+            return standard_response(success=True, message=f"Proposal {action}ed successfully.")
+        except (NeedPostProposal.DoesNotExist, ValidationError):
+            pass
+
+        # 2. Search in OfferPostProposals
+        offer_proposal = None
+        try:
+            offer_proposal = OfferPostProposal.objects.get(pk=pk)
+            # Check if the requesting user is the author of the OFFER POST
+            offer_post = offer_proposal.offer_post
+            author_id = str(offer_post.author_object_id)
+            author_content_type = offer_post.author_content_type
+
+            if author_content_type != user_content_type or author_id != user_id:
+                return standard_response(success=False, message="You are not authorized to perform this action.", status_code=status.HTTP_403_FORBIDDEN)
+            
+            offer_proposal.status = 'accepted' if action == 'accept' else 'rejected'
+            offer_proposal.save()
+
+            if action == 'accept':
+                # Update status to active
+                conv_qs = Conversation.objects.filter(
+                    part1_content_type=offer_post.author_content_type,
+                    part1_object_id=offer_post.author_object_id,
+                    part2_content_type=offer_proposal.proposer_content_type,
+                    part2_object_id=offer_proposal.proposer_object_id,
+                    post_content_type=ContentType.objects.get_for_model(offer_post),
+                    post_object_id=offer_post.id
+                )
+                conv_qs.update(status='active')
+
+                # Send welcome message from Author to Proposer
+                conversation = conv_qs.first()
+                if conversation:
+                    welcome_text = f"Hello! I am interested in your inquiry regarding '{offer_post.title}'. Let's discuss."
+                    Message.objects.create(
+                        conversation=conversation,
+                        sender_content_type=offer_post.author_content_type,
+                        sender_object_id=offer_post.author_object_id,
+                        text=welcome_text
+                    )
+                    
+                    return standard_response(
+                        success=True, 
+                        message="Inquiry accepted successfully.", 
+                        data={"conversation_id": str(conversation.id)}
+                    )
+
+            return standard_response(success=True, message=f"Proposal {action}ed successfully.")
+        except (OfferPostProposal.DoesNotExist, ValidationError):
+            pass
+
+        return standard_response(success=False, message="Proposal not found.", status_code=status.HTTP_404_NOT_FOUND)

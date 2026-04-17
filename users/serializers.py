@@ -24,6 +24,8 @@ from .exceptions import (
 )
 from .utils import validate_age
 
+from .models import UserLoginHistory, AccountDeletionRequest, ProfileDataDeletionRequest, Education, Experience
+
 User = get_user_model()
 
 
@@ -577,3 +579,46 @@ class UserProfileRegistrationSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['first_name', 'last_name', 'date_of_birth', 'address', 'address_line_2', 'city', 'state', 'zip_code', 'headline', 'profile_picture', 'cover_photo']
+
+
+class EducationSerializer(serializers.ModelSerializer):
+    """
+    Serializer for Education model
+    """
+    class Meta:
+        model = Education
+        fields = [
+            'id', 'school', 'degree', 'field_of_study', 
+            'grade', 'activities_and_societies', 'description'
+        ]
+        read_only_fields = ['id']
+
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+class ExperienceSerializer(serializers.ModelSerializer):
+    """
+    Serializer for Experience model
+    """
+    class Meta:
+        model = Experience
+        fields = [
+            'id', 'title', 'company', 'employment_type', 
+            'start_date', 'end_date', 'location', 'description', 'skills'
+        ]
+        read_only_fields = ['id']
+
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+class SupportTicketSerializer(serializers.Serializer):
+    """
+    Serializer for support ticket/email support requests
+    """
+    email_address = serializers.EmailField(help_text="User's email address for contact")
+    subject = serializers.CharField(max_length=255, help_text="Subject of the support request")
+    message = serializers.CharField(style={'base_template': 'textarea.html'}, help_text="Detailed support message")

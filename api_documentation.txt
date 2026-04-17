@@ -155,9 +155,17 @@ Images should be uploaded using `multipart/form-data`.
 
 ### 2. Need Posts
 
+#### List All Need Posts
 - **Endpoint:** `needs/`
-- **Methods:** `GET`, `POST`
+- **Method:** `GET`
+- **Authentication:** Required
 - **Query Params:** `?tag=tagname` (Filter by tag)
+- **Description:** Returns a list of all `NeedPosts` in the system.
+
+#### Create a Need Post
+- **Endpoint:** `needs/`
+- **Method:** `POST`
+- **Authentication:** Required
 - **Request Body (`POST` - multipart/form-data):**
   - `title`: "Need a UI Designer"
   - `description`: "Looking for an expert UI designer for a 3-month project."
@@ -206,6 +214,19 @@ Images should be uploaded using `multipart/form-data`.
 - **Method:** `GET`
 - **Authentication:** Required (Post Author Only)
 
+#### Accept or Reject a Proposal
+- **Endpoint:** `proposals/<uuid:proposal_id>/action/`
+- **Method:** `POST`
+- **Authentication:** Required (Post Author Only)
+- **Request Body (JSON):**
+```json
+{
+    "action": "accept"
+}
+```
+- **Actions:** `accept` or `reject`.
+- **Description:** Approving a connection request (proposal) allows both parties to start a discussion.
+
 #### List All Received Proposals
 - **Endpoint:** `proposals/received/`
 - **Method:** `GET`
@@ -213,17 +234,26 @@ Images should be uploaded using `multipart/form-data`.
 - **Behavior:** Returns all proposals sent to all posts created by the currently authenticated user.
 
 #### Cancel a Proposal
-- **Endpoint:** `proposals/<int:proposal_id>/cancel/`
+- **Endpoint:** `proposals/<uuid:pk>/cancel/`
 - **Method:** `POST`
 - **Authentication:** Required (Proposer Only)
+- **Description:** Cancels a submitted proposal or inquiry for both Need and Offer posts.
 
 ---
 
 ### 4. Offer Posts
 
+#### List All Offer Posts
 - **Endpoint:** `offers/`
-- **Methods:** `GET`, `POST`
+- **Method:** `GET`
+- **Authentication:** Required
 - **Query Params:** `?tag=tagname` (Filter by tag)
+- **Description:** Returns a list of all `OfferPosts` in the system.
+
+#### Create an Offer Post
+- **Endpoint:** `offers/`
+- **Method:** `POST`
+- **Authentication:** Required
 - **Request Body (`POST` - multipart/form-data):**
   - `title`: "Professional Web Development"
   - `description`: "We offer high-quality web development services."
@@ -256,7 +286,37 @@ Images should be uploaded using `multipart/form-data`.
 
 ---
 
-### 5. Combined Feed (The "Wall")
+### 5. Offer Post Proposals (Inquiries)
+
+#### Submit an Inquiry/Proposal
+- **Endpoint:** `offers/<uuid:post_id>/propose/`
+- **Method:** `POST`
+- **Authentication:** Required
+- **Request Body (JSON):**
+  - `subject`: "Inquiry about your service"
+  - `message`: "I am interested in your offer. Can we discuss further?"
+- **Constraint:** A user cannot propose to their own offer, and can only submit one inquiry per offer.
+
+#### List Proposals for an Offer
+- **Endpoint:** `offers/<uuid:post_id>/proposals/`
+- **Method:** `GET`
+- **Authentication:** Required (Offer Author Only)
+
+#### Accept or Reject an Inquiry
+- **Endpoint:** `proposals/<uuid:proposal_id>/action/`
+- **Method:** `POST`
+- **Authentication:** Required (Offer Author Only)
+- **Request Body (JSON):**
+```json
+{
+    "action": "accept"
+}
+```
+- **Actions:** `accept` or `reject`.
+
+---
+
+### 6. Combined Feed (The "Wall")
 
 - **Endpoint:** `all/`
 - **Method:** `GET`
@@ -322,7 +382,51 @@ Images should be uploaded using `multipart/form-data`.
 ### 7. Post Detail (Retrieve, Update, Delete)
 
 - **Endpoints:** 
-  - `needs/<uuid:pk>/`
-  - `offers/<uuid:pk>/`
+  - `needs/<uuid:pk>/` (Type-specific)
+  - `offers/<uuid:pk>/` (Type-specific)
+  - `<uuid:pk>/` (Generic - Retrieve only)
 - **Methods:** `GET`, `PUT`, `PATCH`, `DELETE`
-- **Permissions:** Only the author can update or delete a post.
+- **Permissions:** 
+  - `GET`: Any authenticated user.
+  - `PUT`, `PATCH`, `DELETE`: Only the author.
+- **Generic Endpoint Behavior:** The `<uuid:pk>/` endpoint automatically detects if the post is a "Need" or an "Offer" and returns the details using the combined serializer format.
+
+---
+
+## Chat & Messaging API (`/api/chat/`)
+
+### 0. Real-time WebSockets (WebSocket)
+- **Endpoint:** `ws/chat/<uuid:conversation_id>/?token=<access_token>`
+- **Protocol:** `ws://` (local) or `wss://` (production)
+- **Usage:** Connect to this socket for real-time updates.
+- **Message Format (to send):** `{"message": "Hello world!"}`
+- **Message Format (received):** `{"message": "...", "sender_id": "...", "sender_type": "...", "created_at": "..."}`
+
+### 1. List Conversations (Inbox)
+- **Endpoint:** `conversations/`
+- **Method:** `GET`
+- **Authentication:** Required
+- **Behavior:** Returns all chat threads the user is part of. This includes "Message Requests" (pending connection requests) and "Active Chats".
+
+### 2. Message History & Send Message (REST Backup)
+- **Endpoint:** `conversations/<uuid:conversation_id>/messages/`
+- **Methods:** `GET`, `POST`
+- **Authentication:** Required (Participant Only)
+- **POST Body:** `{"text": "Hello, I am interested!"}`
+- **Constraint:** You can only send messages in `active` conversations.
+
+### 3. Accept Message Request
+- **Endpoint:** `conversations/<uuid:conversation_id>/action/`
+- **Method:** `POST`
+- **Authentication:** Required (Post Owner Only)
+- **POST Body:** `{"action": "accept"}`
+- **Behavior:** Transitions the chat to `active`.
+
+### 4. Start General Conversation (Direct Message)
+- **Endpoint:** `conversations/start/`
+- **Method:** `POST`
+- **Authentication:** Required
+- **Request Body (JSON):** `{"user_id": "other-user-uuid"}`
+- **Behavior:** Starts a 1-to-1 direct chat with any user. These are `active` by default.
+
+---

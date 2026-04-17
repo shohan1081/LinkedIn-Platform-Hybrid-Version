@@ -21,6 +21,11 @@ from .views import (
     ProfileDataDeletionAPIView,
     VerifyProfileDataDeletionView,
     UserProfileRegistrationView,
+    EducationListCreateView,
+    EducationDetailView,
+    ExperienceListCreateView,
+    ExperienceDetailView,
+    SupportTicketView,
 )
 
 app_name = 'users'
@@ -50,6 +55,15 @@ urlpatterns = [
     path('profile/', UserProfileView.as_view(), name='profile'),
     path('account-delete/', AccountDeleteView.as_view(), name='account-delete'),
     path('set-language/', SetLanguageView.as_view(), name='set-language'),
+    path('support-ticket/', SupportTicketView.as_view(), name='support-ticket'),
+
+    # Education endpoints
+    path('education/', EducationListCreateView.as_view(), name='education-list-create'),
+    path('education/<int:pk>/', EducationDetailView.as_view(), name='education-detail'),
+
+    # Experience endpoints
+    path('experience/', ExperienceListCreateView.as_view(), name='experience-list-create'),
+    path('experience/<int:pk>/', ExperienceDetailView.as_view(), name='experience-detail'),
 
     # Account Deletion
     path('delete-account/', account_deletion_request_view, name='delete-account-form'),
