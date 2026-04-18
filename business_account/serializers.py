@@ -285,21 +285,25 @@ class BusinessAccountProfileSerializer(serializers.ModelSerializer):
     """
     Serializer for business account profile (read and update)
     """
+    author_id = serializers.SerializerMethodField()
     website = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     account_type = serializers.SerializerMethodField()
 
     class Meta:
         model = BusinessAccount
         fields = [
-            'id', 'email', 'role_position', 'business_name', 'industry_category',
+            'id', 'author_id', 'email', 'role_position', 'business_name', 'industry_category',
             'business_email', 'website', 'headline', 'cover_photo',
             'address', 'address_line_2', 'city', 'state', 'zip_code',
             'is_email_verified', 'is_profile_complete', 'account_type',
             'date_joined', 'last_login', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'email', 'is_email_verified', 'is_profile_complete', 'date_joined', 'last_login', 'updated_at'
+            'id', 'author_id', 'email', 'is_email_verified', 'is_profile_complete', 'date_joined', 'last_login', 'updated_at'
         ]
+
+    def get_author_id(self, obj):
+        return str(obj.id)
 
     def get_account_type(self, obj):
         return 'business'
