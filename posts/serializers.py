@@ -29,6 +29,7 @@ class BasePostSerializer(serializers.ModelSerializer):
     author_id = serializers.SerializerMethodField()
     author_type = serializers.SerializerMethodField()
     author_details = serializers.SerializerMethodField()
+    is_mine = serializers.SerializerMethodField()
     
     # Nested ImageSerializer for output (read-only)
     images = ImageSerializer(many=True, read_only=True)
@@ -45,10 +46,10 @@ class BasePostSerializer(serializers.ModelSerializer):
     class Meta:
         model = NeedPost # This will be overridden by subclasses (NeedPostSerializer, OfferPostSerializer)
         fields = [
-            'id', 'author_id', 'author_type', 'author_details', 'title', 'description', 
+            'id', 'author_id', 'author_type', 'author_details', 'is_mine', 'title', 'description', 
             'tags', 'tags_detail', 'images', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'author_id', 'author_type', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'author_id', 'author_type', 'is_mine', 'created_at', 'updated_at']
 
     def get_author_id(self, obj):
         return str(obj.author.id) if obj.author else None
@@ -59,6 +60,12 @@ class BasePostSerializer(serializers.ModelSerializer):
         elif isinstance(obj.author, BusinessAccount):
             return 'business_account'
         return None
+
+    def get_is_mine(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return str(obj.author_object_id) == str(request.user.id)
+        return False
 
     def get_author_details(self, obj):
         author = obj.author
@@ -186,6 +193,7 @@ class UserAndBusinessPostListSerializer(serializers.Serializer):
     author_id = serializers.SerializerMethodField()
     author_type = serializers.SerializerMethodField()
     author_details = serializers.SerializerMethodField()
+    is_mine = serializers.SerializerMethodField()
     title = serializers.CharField(read_only=True)
     description = serializers.CharField(read_only=True)
     tags_detail = TagSerializer(many=True, read_only=True, source='tags')
@@ -210,6 +218,12 @@ class UserAndBusinessPostListSerializer(serializers.Serializer):
         elif isinstance(obj.author, BusinessAccount):
             return 'business_account'
         return None
+
+    def get_is_mine(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return str(obj.author_object_id) == str(request.user.id)
+        return False
 
     def get_author_details(self, obj):
         author = obj.author
