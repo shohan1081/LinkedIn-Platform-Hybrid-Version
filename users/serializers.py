@@ -296,6 +296,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     Serializer for user profile (read and update)
     """
     
+    author_id = serializers.SerializerMethodField()
     age = serializers.SerializerMethodField(
         read_only=True,
         help_text="User's age calculated from date of birth"
@@ -308,6 +309,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id',
+            'author_id',
             'email',
             'first_name',
             'last_name',
@@ -335,6 +337,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'id',
+            'author_id',
             'email',
             'is_email_verified',
             'is_subscribed',
@@ -343,6 +346,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'date_joined',
             'last_login',
         ]
+
+    def get_author_id(self, obj):
+        return str(obj.id)
 
     def get_account_type(self, obj):
         return 'personal'
