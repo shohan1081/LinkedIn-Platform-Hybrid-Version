@@ -248,15 +248,18 @@ class BusinessAccountProfileRegistrationSerializer(serializers.ModelSerializer):
         model = BusinessAccount
         fields = [
             'role_position', 'business_name', 'industry_category',
-            'business_email', 'website', 'headline', 'cover_photo',
+            'business_email', 'website', 'headline', 'profile_picture', 'cover_photo', 'about',
             'address', 'address_line_2', 'city', 'state', 'zip_code'
         ]
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         request = self.context.get('request')
-        if request and instance.cover_photo:
-            representation['cover_photo'] = request.build_absolute_uri(instance.cover_photo.url)
+        if request:
+            if instance.profile_picture:
+                representation['profile_picture'] = request.build_absolute_uri(instance.profile_picture.url)
+            if instance.cover_photo:
+                representation['cover_photo'] = request.build_absolute_uri(instance.cover_photo.url)
         return representation
 
     def validate_website(self, value):
@@ -285,15 +288,15 @@ class BusinessAccountProfileSerializer(serializers.ModelSerializer):
     """
     Serializer for business account profile (read and update)
     """
-    author_id = serializers.SerializerMethodField()
     website = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     account_type = serializers.SerializerMethodField()
+    author_id = serializers.SerializerMethodField()
 
     class Meta:
         model = BusinessAccount
         fields = [
             'id', 'author_id', 'email', 'role_position', 'business_name', 'industry_category',
-            'business_email', 'website', 'headline', 'cover_photo',
+            'business_email', 'website', 'headline', 'about', 'profile_picture', 'cover_photo',
             'address', 'address_line_2', 'city', 'state', 'zip_code',
             'is_email_verified', 'is_profile_complete', 'account_type',
             'date_joined', 'last_login', 'updated_at'
@@ -311,8 +314,11 @@ class BusinessAccountProfileSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         request = self.context.get('request')
-        if request and instance.cover_photo:
-            representation['cover_photo'] = request.build_absolute_uri(instance.cover_photo.url)
+        if request:
+            if instance.profile_picture:
+                representation['profile_picture'] = request.build_absolute_uri(instance.profile_picture.url)
+            if instance.cover_photo:
+                representation['cover_photo'] = request.build_absolute_uri(instance.cover_photo.url)
         return representation
 
     def validate_website(self, value):
