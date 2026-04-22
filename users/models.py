@@ -138,11 +138,11 @@ class User(AbstractBaseUser, PermissionsMixin):
         help_text=_("User's cover photo")
     )
 
-    bio = models.TextField(
-        _('bio'),
+    about = models.TextField(
+        _('about'),
         null=True,
         blank=True,
-        help_text=_("User's bio")
+        help_text=_("User's about section")
     )
     
     # Timestamps
