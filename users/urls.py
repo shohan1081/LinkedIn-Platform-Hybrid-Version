@@ -26,6 +26,8 @@ from .views import (
     ExperienceListCreateView,
     ExperienceDetailView,
     SupportTicketView,
+    GlobalUserSearchView,
+    PasswordResetConfirmView,
 )
 
 app_name = 'users'
@@ -56,6 +58,7 @@ urlpatterns = [
     path('account-delete/', AccountDeleteView.as_view(), name='account-delete'),
     path('set-language/', SetLanguageView.as_view(), name='set-language'),
     path('support-ticket/', SupportTicketView.as_view(), name='support-ticket'),
+    path('search/', GlobalUserSearchView.as_view(), name='user-search'),
 
     # Education endpoints
     path('education/', EducationListCreateView.as_view(), name='education-list-create'),
