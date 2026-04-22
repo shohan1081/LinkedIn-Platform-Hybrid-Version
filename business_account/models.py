@@ -73,12 +73,27 @@ class BusinessAccount(AbstractBaseUser, PermissionsMixin):
         help_text=_("A short headline or status for the business profile")
     )
 
+    profile_picture = models.ImageField(
+        _('profile picture'),
+        upload_to='business_profile_pictures/',
+        null=True,
+        blank=True,
+        help_text=_("Business account's profile picture")
+    )
+
     cover_photo = models.ImageField(
         _('cover photo'),
         upload_to='business_cover_photos/',
         null=True,
         blank=True,
         help_text=_("Business account's cover photo")
+    )
+
+    about = models.TextField(
+        _('about'),
+        null=True,
+        blank=True,
+        help_text=_("Business account's about section")
     )
     
     # Timestamps
