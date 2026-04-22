@@ -7,11 +7,13 @@ from django.contrib.contenttypes.models import ContentType
 class MessageSerializer(serializers.ModelSerializer):
     sender_id = serializers.SerializerMethodField()
     sender_type = serializers.SerializerMethodField()
+    sender_name = serializers.SerializerMethodField()
+    sender_profile_picture = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
-        fields = ['id', 'sender_id', 'sender_type', 'text', 'is_read', 'created_at']
-        read_only_fields = ['id', 'sender_id', 'sender_type', 'created_at']
+        fields = ['id', 'sender_id', 'sender_type', 'sender_name', 'sender_profile_picture', 'text', 'is_read', 'created_at']
+        read_only_fields = ['id', 'sender_id', 'sender_type', 'sender_name', 'sender_profile_picture', 'created_at']
 
     def get_sender_id(self, obj):
         return str(obj.sender_object_id)
@@ -21,17 +23,62 @@ class MessageSerializer(serializers.ModelSerializer):
             return 'user'
         return 'business_account'
 
+    def get_sender_name(self, obj):
+        sender = obj.sender
+        if not sender:
+            return "Unknown"
+        if isinstance(sender, User):
+            return f"{sender.first_name} {sender.last_name}".strip() or sender.email
+        return getattr(sender, 'business_name', 'Unknown') or sender.email
+
+    def get_sender_profile_picture(self, obj):
+        sender = obj.sender
+        if not sender:
+            return None
+        
+        request = self.context.get('request')
+        pic = None
+        if isinstance(sender, User):
+            pic = sender.profile_picture
+        else:
+            # BusinessAccount
+            pic = getattr(sender, 'profile_picture', None)
+
+        if pic:
+            if request:
+                return request.build_absolute_uri(pic.url)
+            return pic.url
+        return None
+
 class ConversationSerializer(serializers.ModelSerializer):
     other_participant = serializers.SerializerMethodField()
     last_message = serializers.SerializerMethodField()
     post_title = serializers.SerializerMethodField()
+    unread_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Conversation
-        fields = ['id', 'status', 'post_title', 'other_participant', 'last_message', 'updated_at']
+        fields = ['id', 'status', 'post_title', 'other_participant', 'last_message', 'unread_count', 'updated_at']
+
+    def get_unread_count(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return 0
+        
+        user = request.user
+        user_ct = ContentType.objects.get_for_model(user)
+        
+        # Count messages in this conversation that are NOT read and NOT sent by the current user
+        return obj.messages.filter(is_read=False).exclude(
+            sender_content_type=user_ct,
+            sender_object_id=user.id
+        ).count()
 
     def get_other_participant(self, obj):
         request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return None
+
         user = request.user
         user_id = str(user.id)
         user_ct = ContentType.objects.get_for_model(user)
@@ -47,18 +94,30 @@ class ConversationSerializer(serializers.ModelSerializer):
         if not other:
             return None
 
-        # Return a simple dict with other person's info
+        # Determine the name
+        if isinstance(other, User):
+            name = f"{other.first_name} {other.last_name}".strip() or other.email
+        else:
+            name = getattr(other, 'business_name', 'Unknown') or other.email
+
+        # Determine profile picture
+        pic_url = None
+        pic = getattr(other, 'profile_picture', None)
+        if pic:
+            pic_url = request.build_absolute_uri(pic.url) if request else pic.url
+
         return {
             'id': str(other.id),
             'type': other_type,
-            'name': f"{other.first_name} {other.last_name}" if hasattr(other, 'first_name') else getattr(other, 'business_name', 'Unknown'),
-            'profile_picture': other.profile_picture.url if hasattr(other, 'profile_picture') and other.profile_picture else None
+            'name': name,
+            'profile_picture': pic_url
         }
 
     def get_last_message(self, obj):
         msg = obj.messages.last()
         if msg:
-            return MessageSerializer(msg).data
+            # Pass context for absolute URLs
+            return MessageSerializer(msg, context=self.context).data
         return None
 
     def get_post_title(self, obj):
