@@ -27,6 +27,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
         await self.accept()
+        
+        # Mark messages as read upon connection
+        await self.mark_messages_as_read()
 
     async def disconnect(self, close_code):
         # Leave room group
@@ -67,6 +70,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     # Receive message from room group
     async def chat_message(self, event):
+        # Mark as read if the recipient is the one receiving the event
+        # (Simplified: if you are connected, you have read it)
+        await self.mark_messages_as_read()
+
         # Send message to WebSocket
         await self.send(text_data=json.dumps({
             'message': event['message'],
@@ -74,6 +81,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'sender_type': event['sender_type'],
             'created_at': event['created_at']
         }))
+
+    @database_sync_to_async
+    def mark_messages_as_read(self):
+        try:
+            conv = Conversation.objects.get(id=self.conversation_id)
+            user_ct = ContentType.objects.get_for_model(self.user)
+            # Mark all messages sent by the OTHER person as read
+            conv.messages.exclude(
+                sender_content_type=user_ct, 
+                sender_object_id=self.user.id
+            ).update(is_read=True)
+        except Exception:
+            pass
 
     @database_sync_to_async
     def is_participant(self):
