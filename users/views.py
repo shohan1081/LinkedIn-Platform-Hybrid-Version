@@ -51,6 +51,63 @@ from .utils import (
 )
 from .models import UserLoginHistory, AccountDeletionRequest, ProfileDataDeletionRequest, Education, Experience
 
+from django.db.models import Q as DjangoQ
+
+class GlobalUserSearchView(APIView):
+    """
+    Search for both regular users and business accounts.
+    - Regular users: searches first_name, last_name, email.
+    - Business accounts: searches business_name, email.
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+
+    def get(self, request):
+        query = request.query_params.get('q', '')
+        if not query:
+            return standard_response(success=True, data={'users': [], 'businesses': []})
+
+        # Search regular users
+        users = User.objects.filter(
+            DjangoQ(first_name__icontains=query) | 
+            DjangoQ(last_name__icontains=query) | 
+            DjangoQ(email__icontains=query)
+        ).filter(is_active=True)[:10]
+
+        # Search business accounts
+        from business_account.models import BusinessAccount
+        businesses = BusinessAccount.objects.filter(
+            DjangoQ(business_name__icontains=query) | 
+            DjangoQ(email__icontains=query)
+        ).filter(is_active=True)[:10]
+
+        user_results = []
+        for u in users:
+            user_results.append({
+                'id': str(u.id),
+                'name': f"{u.first_name} {u.last_name}".strip() or u.email,
+                'type': 'user',
+                'profile_picture': get_full_media_url(request, u.profile_picture)
+            })
+
+        business_results = []
+        for b in businesses:
+            business_results.append({
+                'id': str(b.id),
+                'name': b.business_name or b.email,
+                'type': 'business',
+                'profile_picture': get_full_media_url(request, b.cover_photo) # Use cover_photo for business
+            })
+
+        return standard_response(
+            success=True,
+            message="Search results retrieved",
+            data={
+                'users': user_results,
+                'businesses': business_results
+            }
+        )
+
 class SupportTicketView(APIView):
     """
     API endpoint for sending support tickets to admin.
