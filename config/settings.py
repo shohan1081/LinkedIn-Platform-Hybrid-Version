@@ -83,11 +83,12 @@ WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 
 # Channel layers for WebSockets (Redis required)
+REDIS_URL = config('REDIS_URL', default='redis://127.0.0.1:6379/1')
 CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            "hosts": [('127.0.0.1', 6379)],
+            "hosts": [REDIS_URL],
         },
     },
 }
@@ -189,6 +190,6 @@ SIMPLE_JWT = {
     'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=7),
 }
 
-# Crross-Origin Resource Sharing (CORS) settings
-CORS_ALLOWED_ORIGINS = ["nonlyric-elliot-bridally.ngrok-free.dev"]
+# Cross-Origin Resource Sharing (CORS) settings
+CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='http://localhost:3000,http://127.0.0.1:3000').split(',')
 CORS_ALLOW_CREDENTIALS = True
