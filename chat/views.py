@@ -130,6 +130,11 @@ class MessageListView(generics.ListCreateAPIView):
         if not conv:
             return standard_response(success=False, message="Conversation not found or unauthorized.", status_code=status.HTTP_404_NOT_FOUND)
         
+        # Mark messages as read for the current user
+        user = request.user
+        user_ct = ContentType.objects.get_for_model(user)
+        conv.messages.exclude(sender_content_type=user_ct, sender_object_id=user.id).update(is_read=True)
+
         queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)
         return standard_response(
