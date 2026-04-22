@@ -323,7 +323,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'state',
             'zip_code',
             'age',
-            'bio',
+            'about',
             'headline',
             'profile_picture',
             'cover_photo',
@@ -419,7 +419,7 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = User
-        fields = ['first_name', 'last_name', 'date_of_birth', 'gender', 'occupation', 'country', 'bio', 'headline', 'profile_picture', 'cover_photo']
+        fields = ['first_name', 'last_name', 'date_of_birth', 'gender', 'occupation', 'country', 'about', 'headline', 'profile_picture', 'cover_photo']
     
     def validate_first_name(self, value):
         """Validate user's first name"""
