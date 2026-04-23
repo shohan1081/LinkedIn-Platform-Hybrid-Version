@@ -5,6 +5,8 @@ from django.utils.translation import gettext_lazy as _
 from .managers import UserManager
 import uuid
 from django.contrib.auth.hashers import make_password, check_password
+from django.contrib.contenttypes.models import ContentType
+from django.contrib.contenttypes.fields import GenericForeignKey
 
 
 class User(AbstractBaseUser, PermissionsMixin):
@@ -398,3 +400,31 @@ class Experience(models.Model):
 
     def __str__(self):
         return f"{self.title} at {self.company} - {self.user.email}"
+
+
+class Recommendation(models.Model):
+    """
+    Polymorphic model for recommendations between all account types.
+    """
+    # The person receiving the recommendation
+    receiver_content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, related_name='received_recommendations_ct')
+    receiver_object_id = models.UUIDField()
+    receiver = GenericForeignKey('receiver_content_type', 'receiver_object_id')
+
+    # The person giving the recommendation
+    giver_content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, related_name='given_recommendations_ct')
+    giver_object_id = models.UUIDField()
+    giver = GenericForeignKey('giver_content_type', 'giver_object_id')
+
+    message = models.TextField(_('recommendation message'))
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = _('recommendation')
+        verbose_name_plural = _('recommendations')
+        ordering = ['-created_at']
+        # Prevent double recommendations between the same two people
+        unique_together = ('receiver_content_type', 'receiver_object_id', 'giver_content_type', 'giver_object_id')
+
+    def __str__(self):
+        return f"Recommendation from {self.giver} to {self.receiver}"
