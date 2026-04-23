@@ -1,19 +1,16 @@
 services:
-  # Redis service for WebSockets channel layers
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
     restart: always
 
-  # Main Django Application running with Daphne
   web:
     build: .
     restart: always
     env_file:
       - .env
     environment:
-      # Use Redis service name for REDIS_URL
       - REDIS_URL=redis://redis:6379/1
     volumes:
       - static_volume:/app/staticfiles
@@ -21,19 +18,34 @@ services:
     depends_on:
       - redis
 
-  # Nginx Reverse Proxy
   nginx:
     image: nginx:1.25-alpine
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
       - static_volume:/app/staticfiles
       - media_volume:/app/media
+      - certbot_etc:/etc/letsencrypt
+      - certbot_var:/var/lib/letsencrypt
+      - certbot_www:/var/www/certbot
     restart: always
     depends_on:
       - web
 
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - certbot_etc:/etc/letsencrypt
+      - certbot_var:/var/lib/letsencrypt
+      - certbot_www:/var/www/certbot
+    # This command tries to renew certificates every 12 hours automatically
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
 volumes:
   static_volume:
   media_volume:
+  certbot_etc:
+  certbot_var:
+  certbot_www:
