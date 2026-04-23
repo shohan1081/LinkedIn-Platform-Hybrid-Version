@@ -3,13 +3,10 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.core.mail import send_mail
 from django.urls import reverse
-from django.contrib.auth import get_user_model # Move get_user_model here
-
-# Create your views here.
-"""
-API Views for user authentication and profile management
-All views return standardized response format
-"""
+from django.contrib.auth import get_user_model
+from django.conf import settings
+from django.db.models import Q as DjangoQ
+from django.contrib.contenttypes.models import ContentType
 
 from rest_framework import status, generics
 from rest_framework.views import APIView
@@ -19,10 +16,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView, TokenVerifyView
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
-from django.contrib.auth import get_user_model
-#from progress.utils import mark_user_login
-from django.utils import timezone
-from django.conf import settings
+
 from .serializers import (
     UserRegistrationSerializer,
     UserLoginSerializer,
@@ -41,6 +35,8 @@ from .serializers import (
     EducationSerializer,
     ExperienceSerializer,
     SupportTicketSerializer,
+    RecommendationSerializer,
+    GiveRecommendationSerializer,
 )
 from .utils import (
     send_welcome_email,
@@ -49,16 +45,96 @@ from .utils import (
     get_user_agent,
     get_full_media_url,
 )
-from .models import UserLoginHistory, AccountDeletionRequest, ProfileDataDeletionRequest, Education, Experience
+from .models import (
+    UserLoginHistory, 
+    AccountDeletionRequest, 
+    ProfileDataDeletionRequest, 
+    Education, 
+    Experience, 
+    Recommendation
+)
 
-from django.db.models import Q as DjangoQ
+User = get_user_model()
+
+def standard_response(success=True, message="", data=None, errors=None, status_code=status.HTTP_200_OK):
+    """
+    Create standardized API response
+    """
+    response_data = {
+        'success': success,
+        'message': message,
+    }
+    if data is not None:
+        response_data['data'] = data
+    if errors is not None:
+        response_data['errors'] = errors
+    return Response(response_data, status=status_code)
+
+class RecommendationListView(APIView):
+    """
+    List recommendations for a specific user or business.
+    Query params:
+    - id: UUID of the receiver
+    - type: 'user' or 'business'
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = [JWTAuthentication]
+
+    def get(self, request):
+        receiver_id = request.query_params.get('id')
+        receiver_type = request.query_params.get('type')
+
+        if not receiver_id or not receiver_type:
+            return standard_response(
+                success=False,
+                message="Both 'id' and 'type' (user/business) query parameters are required.",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        from business_account.models import BusinessAccount
+        model = User if receiver_type == 'user' else BusinessAccount
+        try:
+            receiver_ct = ContentType.objects.get_for_model(model)
+            recommendations = Recommendation.objects.filter(
+                receiver_content_type=receiver_ct,
+                receiver_object_id=receiver_id
+            )
+            serializer = RecommendationSerializer(recommendations, many=True, context={'request': request})
+            return standard_response(
+                success=True,
+                message="Recommendations retrieved successfully",
+                data=serializer.data
+            )
+        except Exception as e:
+            return standard_response(
+                success=False,
+                message=str(e),
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+class GiveRecommendationView(APIView):
+    """
+    Give or update a recommendation for another user/business.
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+
+    def post(self, request):
+        serializer = GiveRecommendationSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            serializer.save()
+            return standard_response(
+                success=True,
+                message="Recommendation submitted successfully"
+            )
+        return standard_response(
+            success=False,
+            message="Failed to submit recommendation",
+            errors=serializer.errors,
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
 
 class GlobalUserSearchView(APIView):
-    """
-    Search for both regular users and business accounts.
-    - Regular users: searches first_name, last_name, email.
-    - Business accounts: searches business_name, email.
-    """
     permission_classes = [IsAuthenticated]
     authentication_classes = [JWTAuthentication]
 
@@ -67,14 +143,12 @@ class GlobalUserSearchView(APIView):
         if not query:
             return standard_response(success=True, data={'users': [], 'businesses': []})
 
-        # Search regular users
         users = User.objects.filter(
             DjangoQ(first_name__icontains=query) | 
             DjangoQ(last_name__icontains=query) | 
             DjangoQ(email__icontains=query)
         ).filter(is_active=True)[:10]
 
-        # Search business accounts
         from business_account.models import BusinessAccount
         businesses = BusinessAccount.objects.filter(
             DjangoQ(business_name__icontains=query) | 
@@ -96,23 +170,16 @@ class GlobalUserSearchView(APIView):
                 'id': str(b.id),
                 'name': b.business_name or b.email,
                 'type': 'business',
-                'profile_picture': get_full_media_url(request, b.cover_photo) # Use cover_photo for business
+                'profile_picture': get_full_media_url(request, b.profile_picture)
             })
 
         return standard_response(
             success=True,
             message="Search results retrieved",
-            data={
-                'users': user_results,
-                'businesses': business_results
-            }
+            data={'users': user_results, 'businesses': business_results}
         )
 
 class SupportTicketView(APIView):
-    """
-    API endpoint for sending support tickets to admin.
-    Accessible by any authenticated user (regular or business).
-    """
     permission_classes = [IsAuthenticated]
     authentication_classes = [JWTAuthentication]
     serializer_class = SupportTicketSerializer
@@ -123,537 +190,150 @@ class SupportTicketView(APIView):
             email_address = serializer.validated_data['email_address']
             subject = serializer.validated_data['subject']
             message = serializer.validated_data['message']
-            
-            # Prepare email content
             admin_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'admin@example.com')
             email_subject = f"Support Request: {subject}"
             email_message = f"From: {email_address}\n\nMessage:\n{message}"
-            
             try:
-                send_mail(
-                    email_subject,
-                    email_message,
-                    settings.DEFAULT_FROM_EMAIL,
-                    [admin_email],
-                    fail_silently=False,
-                )
-                return standard_response(
-                    success=True,
-                    message="Support request sent successfully. We will get back to you soon."
-                )
+                send_mail(email_subject, email_message, settings.DEFAULT_FROM_EMAIL, [admin_email], fail_silently=False)
+                return standard_response(success=True, message="Support request sent successfully.")
             except Exception as e:
-                return standard_response(
-                    success=False,
-                    message=f"Failed to send support request: {str(e)}",
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
-        
-        return standard_response(
-            success=False,
-            message="Invalid data provided",
-            errors=serializer.errors,
-            status_code=status.HTTP_400_BAD_REQUEST
-        )
+                return standard_response(success=False, message=f"Failed: {str(e)}", status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return standard_response(success=False, message="Invalid data", errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
 
 class IsRegularUser(IsAuthenticated):
-    """
-    Permission to check if the user is a regular user and not a business account
-    """
     def has_permission(self, request, view):
         is_authenticated = super().has_permission(request, view)
-        if not is_authenticated:
-            return False
-        
-        # Check if the user is an instance of the regular User model
-        # BusinessAccount instances will return False
+        if not is_authenticated: return False
         return isinstance(request.user, User)
 
 class EducationListCreateView(APIView):
     permission_classes = [IsRegularUser]
     authentication_classes = [JWTAuthentication]
-
     def get(self, request):
         educations = Education.objects.filter(user=request.user)
         serializer = EducationSerializer(educations, many=True)
-        return standard_response(
-            success=True,
-            message="Educations retrieved successfully",
-            data=serializer.data
-        )
-
+        return standard_response(success=True, message="Educations retrieved", data=serializer.data)
     def post(self, request):
         serializer = EducationSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             serializer.save()
-            return standard_response(
-                success=True,
-                message="Education added successfully",
-                data=serializer.data,
-                status_code=status.HTTP_201_CREATED
-            )
-        return standard_response(
-            success=False,
-            message="Failed to add education",
-            errors=serializer.errors,
-            status_code=status.HTTP_400_BAD_REQUEST
-        )
+            return standard_response(success=True, message="Education added", data=serializer.data, status_code=status.HTTP_201_CREATED)
+        return standard_response(success=False, message="Failed", errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
 
 class EducationDetailView(APIView):
     permission_classes = [IsRegularUser]
     authentication_classes = [JWTAuthentication]
-
     def get_object(self, pk, user):
-        try:
-            return Education.objects.get(pk=pk, user=user)
-        except Education.DoesNotExist:
-            return None
-
+        try: return Education.objects.get(pk=pk, user=user)
+        except Education.DoesNotExist: return None
     def get(self, request, pk):
-        education = self.get_object(pk, request.user)
-        if not education:
-            return standard_response(success=False, message="Education not found", status_code=status.HTTP_404_NOT_FOUND)
-        serializer = EducationSerializer(education)
-        return standard_response(success=True, message="Education retrieved", data=serializer.data)
-
+        edu = self.get_object(pk, request.user)
+        if not edu: return standard_response(success=False, message="Not found", status_code=status.HTTP_404_NOT_FOUND)
+        return standard_response(success=True, data=EducationSerializer(edu).data)
     def put(self, request, pk):
-        education = self.get_object(pk, request.user)
-        if not education:
-            return standard_response(success=False, message="Education not found", status_code=status.HTTP_404_NOT_FOUND)
-        serializer = EducationSerializer(education, data=request.data, partial=True, context={'request': request})
+        edu = self.get_object(pk, request.user)
+        if not edu: return standard_response(success=False, message="Not found", status_code=status.HTTP_404_NOT_FOUND)
+        serializer = EducationSerializer(edu, data=request.data, partial=True, context={'request': request})
         if serializer.is_valid():
             serializer.save()
-            return standard_response(success=True, message="Education updated", data=serializer.data)
-        return standard_response(success=False, message="Update failed", errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
-
+            return standard_response(success=True, message="Updated", data=serializer.data)
+        return standard_response(success=False, message="Failed", errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
     def delete(self, request, pk):
-        education = self.get_object(pk, request.user)
-        if not education:
-            return standard_response(success=False, message="Education not found", status_code=status.HTTP_404_NOT_FOUND)
-        education.delete()
-        return standard_response(success=True, message="Education deleted successfully")
+        edu = self.get_object(pk, request.user)
+        if not edu: return standard_response(success=False, message="Not found", status_code=status.HTTP_404_NOT_FOUND)
+        edu.delete()
+        return standard_response(success=True, message="Deleted")
 
 class ExperienceListCreateView(APIView):
     permission_classes = [IsRegularUser]
     authentication_classes = [JWTAuthentication]
-
     def get(self, request):
-        experiences = Experience.objects.filter(user=request.user)
-        serializer = ExperienceSerializer(experiences, many=True)
-        return standard_response(
-            success=True,
-            message="Experiences retrieved successfully",
-            data=serializer.data
-        )
-
+        exp = Experience.objects.filter(user=request.user)
+        return standard_response(success=True, data=ExperienceSerializer(exp, many=True).data)
     def post(self, request):
         serializer = ExperienceSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             serializer.save()
-            return standard_response(
-                success=True,
-                message="Experience added successfully",
-                data=serializer.data,
-                status_code=status.HTTP_201_CREATED
-            )
-        return standard_response(
-            success=False,
-            message="Failed to add experience",
-            errors=serializer.errors,
-            status_code=status.HTTP_400_BAD_REQUEST
-        )
+            return standard_response(success=True, message="Added", data=serializer.data, status_code=status.HTTP_201_CREATED)
+        return standard_response(success=False, message="Failed", errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
 
 class ExperienceDetailView(APIView):
     permission_classes = [IsRegularUser]
     authentication_classes = [JWTAuthentication]
-
     def get_object(self, pk, user):
-        try:
-            return Experience.objects.get(pk=pk, user=user)
-        except Experience.DoesNotExist:
-            return None
-
+        try: return Experience.objects.get(pk=pk, user=user)
+        except Experience.DoesNotExist: return None
     def get(self, request, pk):
-        experience = self.get_object(pk, request.user)
-        if not experience:
-            return standard_response(success=False, message="Experience not found", status_code=status.HTTP_404_NOT_FOUND)
-        serializer = ExperienceSerializer(experience)
-        return standard_response(success=True, message="Experience retrieved", data=serializer.data)
-
+        exp = self.get_object(pk, request.user)
+        if not exp: return standard_response(success=False, message="Not found", status_code=status.HTTP_404_NOT_FOUND)
+        return standard_response(success=True, data=ExperienceSerializer(exp).data)
     def put(self, request, pk):
-        experience = self.get_object(pk, request.user)
-        if not experience:
-            return standard_response(success=False, message="Experience not found", status_code=status.HTTP_404_NOT_FOUND)
-        serializer = ExperienceSerializer(experience, data=request.data, partial=True, context={'request': request})
+        exp = self.get_object(pk, request.user)
+        if not exp: return standard_response(success=False, message="Not found", status_code=status.HTTP_404_NOT_FOUND)
+        serializer = ExperienceSerializer(exp, data=request.data, partial=True, context={'request': request})
         if serializer.is_valid():
             serializer.save()
-            return standard_response(success=True, message="Experience updated", data=serializer.data)
-        return standard_response(success=False, message="Update failed", errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
-
+            return standard_response(success=True, message="Updated", data=serializer.data)
+        return standard_response(success=False, message="Failed", errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
     def delete(self, request, pk):
-        experience = self.get_object(pk, request.user)
-        if not experience:
-            return standard_response(success=False, message="Experience not found", status_code=status.HTTP_404_NOT_FOUND)
-        experience.delete()
-        return standard_response(success=True, message="Experience deleted successfully")
-from django.shortcuts import render
-
-@csrf_exempt
-def delete_profile_data_request_view(request):
-    return render(request, 'users/delete_profile_data_request.html')
-
-@method_decorator(csrf_exempt, name='dispatch')
-class ProfileDataDeletionAPIView(APIView):
-    permission_classes = [AllowAny]
-    authentication_classes = []
-
-    def post(self, request):
-        email = request.data.get('email')
-        if not email:
-            return render(request, 'users/delete_profile_data_request.html', {'error': 'Email is required.'})
-
-        user = User.objects.filter(email=email).first()
-        if user:
-            deletion_request, created = ProfileDataDeletionRequest.objects.get_or_create(user=user, defaults={'email': email})
-            
-            verification_link = request.build_absolute_uri(
-                reverse('users:verify_profile_data_deletion', kwargs={'token': str(deletion_request.verification_token)})
-            )
-            
-            send_mail(
-                'Verify Profile Data Deletion Request',
-                f'Click the following link to delete your profile data: {verification_link}',
-                'from@example.com',
-                [email],
-                fail_silently=False,
-            )
-        return render(request, 'users/delete_profile_data_submitted.html')
-
-class VerifyProfileDataDeletionView(APIView):
-    permission_classes = [AllowAny]
-    authentication_classes = []
-
-    def get(self, request, token):
-        try:
-            deletion_request = ProfileDataDeletionRequest.objects.get(verification_token=token, status='pending')
-            if deletion_request.user:
-                user = deletion_request.user
-                user.first_name = "User"
-                user.last_name = ""
-                user.date_of_birth = None
-                user.gender = None
-                user.occupation = None
-                user.country = None
-                user.bio = None
-                if user.profile_picture:
-                    user.profile_picture.delete(save=False)
-                user.save()
-                
-                deletion_request.status = 'completed'
-                deletion_request.save()
-                return render(request, 'users/delete_profile_data_confirmed.html')
-            else:
-                deletion_request.status = 'completed'
-                deletion_request.save()
-                return render(request, 'users/delete_profile_data_confirmed.html')
-        except ProfileDataDeletionRequest.DoesNotExist:
-            return standard_response(success=False, message="Invalid or expired verification link.", status_code=status.HTTP_400_BAD_REQUEST)
-
-
-User = get_user_model()
-
-@csrf_exempt
-def account_deletion_request_view(request):
-    return render(request, 'users/delete_account.html')
-@method_decorator(csrf_exempt, name='dispatch')
-class AccountDeletionAPIView(APIView):
-    permission_classes = [AllowAny]
-    authentication_classes = []
-
-    def post(self, request):
-        email = request.data.get('email')
-
-        if not email:
-            return render(request, 'users/delete_account.html', {'error': 'Email is required.'})
-
-        user = User.objects.filter(email=email).first()
-        if user:
-            deletion_request, created = AccountDeletionRequest.objects.get_or_create(user=user, defaults={'email': email})
-
-            # Create a verification link
-            verification_link = request.build_absolute_uri(
-                reverse('users:verify_account_deletion', kwargs={'token': str(deletion_request.verification_token)})
-            )
-
-            # Send email to the user
-            send_mail(
-                'Verify Account Deletion Request',
-                f'Click the following link to delete your account: {verification_link}',
-                'from@example.com',  # Replace with your sending email
-                [email],
-                fail_silently=False,
-            )
-        return render(request, 'users/deletion_request_submitted.html')
-
-
-class VerifyAccountDeletionView(APIView):
-    permission_classes = [AllowAny]
-    authentication_classes = []
-
-    def get(self, request, token):
-        try:
-            deletion_request = AccountDeletionRequest.objects.get(verification_token=token, status='pending')
-            if deletion_request.user:
-                deletion_request.user.delete()
-                deletion_request.user = None
-                deletion_request.status = 'completed'
-                deletion_request.save()
-                return render(request, 'users/deletion_confirmed.html')
-            else:
-                # Handle case where user is not found, but request exists
-                deletion_request.status = 'completed'
-                deletion_request.save()
-                return render(request, 'users/deletion_confirmed.html')
-        except AccountDeletionRequest.DoesNotExist:
-            return standard_response(success=False, message="Invalid or expired verification link.", status_code=status.HTTP_400_BAD_REQUEST)
-
-
-
-def standard_response(success=True, message="", data=None, errors=None, status_code=status.HTTP_200_OK):
-    """
-    Create standardized API response
-    
-    Args:
-        success (bool): Whether operation was successful
-        message (str): Response message
-        data (dict): Response data
-        errors (dict): Error details (for failed operations)
-        status_code (int): HTTP status code
-        
-    Returns:
-        Response: DRF Response object with standardized format
-    """
-    response_data = {
-        'success': success,
-        'message': message,
-    }
-    
-    if data is not None:
-        response_data['data'] = data
-    
-    if errors is not None:
-        response_data['errors'] = errors
-    
-    return Response(response_data, status=status_code)
-
+        exp = self.get_object(pk, request.user)
+        if not exp: return standard_response(success=False, message="Not found", status_code=status.HTTP_404_NOT_FOUND)
+        exp.delete()
+        return standard_response(success=True, message="Deleted")
 
 class UserRegistrationView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
-    """
-    API endpoint for user registration (signup)
-    
-    POST /api/users/signup/
-    
-    Request body:
-    {
-        "name": "John Doe",
-        "email": "john@example.com",
-        "date_of_birth": "1990-01-15",
-        "password": "SecurePass123!",
-        "confirm_password": "SecurePass123!"
-    }
-    """
-    
-    permission_classes = [AllowAny]
     serializer_class = UserRegistrationSerializer
-    
     def post(self, request):
-        """Handle user registration"""
         serializer = self.serializer_class(data=request.data)
-        
         if serializer.is_valid():
             user = serializer.save()
-            
-            return standard_response(
-                success=True,
-                message="Registration successful. Please check your email for the OTP to verify your account.",
-                data={
-                    'user': {
-                        'id': str(user.id),
-                        'email': user.email,
-                        'first_name': user.first_name,
-                        'last_name': user.last_name,
-                        'is_email_verified': user.is_email_verified,
-                    }
-                },
-                status_code=status.HTTP_201_CREATED
-            )
-        
-        return standard_response(
-            success=False,
-            message="Registration failed",
-            errors=serializer.errors,
-            status_code=status.HTTP_400_BAD_REQUEST
-        )
-
+            return standard_response(success=True, message="OTP sent.", data={'user': {'id': str(user.id), 'email': user.email}}, status_code=status.HTTP_201_CREATED)
+        return standard_response(success=False, message="Failed", errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
 
 class UserLoginView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
-    """
-    API endpoint for user login
-    
-    POST /api/users/login/
-    
-    Request body:
-    {
-        "email": "john@example.com",
-        "password": "SecurePass123!"
-    }
-    """
-    
-    permission_classes = [AllowAny]
     serializer_class = UserLoginSerializer
-    
     def post(self, request):
-        """Handle user login"""
         serializer = self.serializer_class(data=request.data)
-        
         if serializer.is_valid():
             user = serializer.validated_data['user']
-            
-            # Generate JWT tokens
             refresh = RefreshToken.for_user(user)
-            access_token = str(refresh.access_token)
-            refresh_token = str(refresh)
-            
-            # Update last login
             user.last_login = timezone.now()
             user.save(update_fields=['last_login'])
-            
-            # Log login history
-            UserLoginHistory.objects.create(
-                user=user,
-                ip_address=get_client_ip(request),
-                user_agent=get_user_agent(request),
-            )
+            UserLoginHistory.objects.create(user=user, ip_address=get_client_ip(request), user_agent=get_user_agent(request))
+            return standard_response(success=True, message="Login successful", data={
+                'account_type': 'personal',
+                'user': {'id': str(user.id), 'email': user.email, 'is_profile_complete': user.is_profile_complete, 'profile_picture': get_full_media_url(request, user.profile_picture)},
+                'tokens': {'access': str(refresh.access_token), 'refresh': str(refresh)}
+            })
+        return standard_response(success=False, message="Login failed", errors=serializer.errors, status_code=status.HTTP_401_UNAUTHORIZED)
 
-            # Track daily login in progress app
-            #mark_user_login(user)
-            
-            # Return success response with tokens
-            return standard_response(
-                success=True,
-                message="Login successful",
-                data={
-                    'account_type': 'personal',
-                    'user': {
-                        'id': str(user.id),
-                        'email': user.email,
-                        'first_name': user.first_name,
-                        'last_name': user.last_name,
-                        'is_email_verified': user.is_email_verified,
-                        'is_profile_complete': user.is_profile_complete,
-                        'profile_picture': get_full_media_url(request, user.profile_picture),
-                    },
-                    'tokens': {
-                        'access': access_token,
-                        'refresh': refresh_token,
-                    }
-                },
-                status_code=status.HTTP_200_OK
-            )
-        
-        # Return validation errors
-        return standard_response(
-            success=False,
-            message="Login failed",
-            errors=serializer.errors,
-            status_code=status.HTTP_401_UNAUTHORIZED
-        )
-
-
-class UserLogoutView(APIView):
+class UserProfileView(APIView):
     permission_classes = [IsAuthenticated]
     authentication_classes = [JWTAuthentication]
-    """
-    API endpoint for user logout
-    
-    POST /api/users/logout/
-    
-    Request body:
-    {
-        "refresh": "refresh_token_here"
-    }
-    """
-    
-    permission_classes = [IsAuthenticated]
-    
-    def post(self, request):
-        """Handle user logout by blacklisting refresh token"""
-        try:
-            refresh_token = request.data.get('refresh')
-            
-            if not refresh_token:
-                return standard_response(
-                    success=False,
-                    message="Refresh token is required",
-                    status_code=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Blacklist only works for AUTH_USER_MODEL (User)
-            # BusinessAccount tokens are not tracked in the OutstandingToken table
-            if isinstance(request.user, User):
-                try:
-                    token = RefreshToken(refresh_token)
-                    token.blacklist()
-                except (TokenError, AttributeError):
-                    # If blacklist fails (e.g. token already blacklisted), still return success
-                    pass
-            
-            return standard_response(
-                success=True,
-                message="Logout successful",
-                status_code=status.HTTP_200_OK
-            )
-        
-        except TokenError:
-            return standard_response(
-                success=False,
-                message="Invalid or expired token",
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
-        except Exception as e:
-            return standard_response(
-                success=False,
-                message=f"Logout failed: {str(e)}",
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
-
-
-import logging
-
-logger = logging.getLogger(__name__)
-
-"""
-API Views - Part 2: Email Verification, Password Management, Profile
-"""
-
+    def get(self, request):
+        serializer = UserProfileSerializer(request.user, context={'request': request})
+        return standard_response(success=True, data=serializer.data)
+    def patch(self, request):
+        serializer = UserProfileUpdateSerializer(request.user, data=request.data, partial=True, context={'request': request})
+        if serializer.is_valid():
+            serializer.save()
+            return standard_response(success=True, message="Profile updated", data=UserProfileSerializer(request.user, context={'request': request}).data)
+        return standard_response(success=False, message="Failed", errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
+    def put(self, request):
+        return self.patch(request)
 
 class VerifyOTPView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
-    """
-    API endpoint to verify OTP
-    """
-    permission_classes = [AllowAny]
     serializer_class = VerifyOTPSerializer
-
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
-            email = serializer.validated_data['email']
-            otp = serializer.validated_data['otp']
+            email, otp = serializer.validated_data['email'], serializer.validated_data['otp']
             try:
                 user = User.objects.get(email=email)
                 if user.otp == otp and user.is_otp_valid():
@@ -661,535 +341,200 @@ class VerifyOTPView(APIView):
                     user.is_email_verified = True
                     user.clear_otp()
                     user.save()
-
-                    # Generate JWT tokens
                     refresh = RefreshToken.for_user(user)
-                    access_token = str(refresh.access_token)
-                    refresh_token = str(refresh)
-
-                    return standard_response(
-                        success=True,
-                        message="OTP verified successfully. User logged in.",
-                        data={
-                            'account_type': 'personal',
-                            'user': {
-                                'id': str(user.id),
-                                'email': user.email,
-                                'first_name': user.first_name,
-                                'last_name': user.last_name,
-                                'is_email_verified': user.is_email_verified,
-                                'is_profile_complete': user.is_profile_complete,
-                                'profile_picture': get_full_media_url(request, user.profile_picture),
-                            },
-                            'tokens': {
-                                'access': access_token,
-                                'refresh': refresh_token,
-                            }
-                        }
-                    )
-                else:
-                    return standard_response(success=False, message="Invalid or expired OTP.", status_code=status.HTTP_400_BAD_REQUEST)
-            except User.DoesNotExist:
-                return standard_response(success=False, message="User not found.", status_code=status.HTTP_404_NOT_FOUND)
-        return standard_response(success=False, message="Invalid data.", errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
+                    return standard_response(success=True, message="OTP verified", data={
+                        'account_type': 'personal',
+                        'user': {'id': str(user.id), 'email': user.email, 'profile_picture': get_full_media_url(request, user.profile_picture)},
+                        'tokens': {'access': str(refresh.access_token), 'refresh': str(refresh)}
+                    })
+                return standard_response(success=False, message="Invalid OTP", status_code=status.HTTP_400_BAD_REQUEST)
+            except User.DoesNotExist: return standard_response(success=False, message="User not found", status_code=status.HTTP_404_NOT_FOUND)
+        return standard_response(success=False, errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
 
 class ResendOTPView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
-    """
-    API endpoint to resend OTP
-    """
-    permission_classes = [AllowAny]
     serializer_class = ResendOTPSerializer
-
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
-            email = serializer.validated_data['email']
             try:
-                user = User.objects.get(email=email)
-                if not user.is_active:
-                    from .utils import generate_otp, send_otp_email
-                    otp = generate_otp()
-                    user.otp = otp
-                    user.otp_created_at = timezone.now()
-                    user.save(update_fields=['otp', 'otp_created_at'])
-                    send_otp_email(user, otp)
-                    return standard_response(success=True, message="OTP has been resent to your email.")
-                else:
-                    return standard_response(success=False, message="User is already active.", status_code=status.HTTP_400_BAD_REQUEST)
-            except User.DoesNotExist:
-                return standard_response(success=False, message="User not found.", status_code=status.HTTP_404_NOT_FOUND)
-        return standard_response(success=False, message="Invalid data.", errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
-
+                user = User.objects.get(email=serializer.validated_data['email'])
+                from .utils import generate_otp, send_otp_email
+                otp = generate_otp()
+                user.otp, user.otp_created_at = otp, timezone.now()
+                user.save()
+                send_otp_email(user, otp)
+                return standard_response(success=True, message="OTP resent.")
+            except User.DoesNotExist: return standard_response(success=False, message="Not found", status_code=status.HTTP_404_NOT_FOUND)
+        return standard_response(success=False, errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
 
 class PasswordResetRequestView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
-    """
-    API endpoint to request password reset
-    
-    POST /api/users/password-reset/
-    
-    Request body:
-    {
-        "email": "john@example.com"
-    }
-    """
-    
     serializer_class = PasswordResetRequestSerializer
-    
     def post(self, request):
-        """Request password reset"""
         serializer = self.serializer_class(data=request.data)
-        
         if serializer.is_valid():
             email = serializer.validated_data['email'].lower()
-            
-            from users.models import User
             from business_account.models import BusinessAccount
-            from .utils import generate_otp, send_otp_email
-            
-            # Try to find user in either model
-            user = User.objects.filter(email=email).first()
-            if not user:
-                user = BusinessAccount.objects.filter(email=email).first()
-            
+            user = User.objects.filter(email=email).first() or BusinessAccount.objects.filter(email=email).first()
             if user:
-                # Generate and send OTP
+                from .utils import generate_otp, send_otp_email
                 otp = generate_otp()
-                user.otp = otp
-                user.otp_created_at = timezone.now()
-                user.save(update_fields=['otp', 'otp_created_at'])
+                user.otp, user.otp_created_at = otp, timezone.now()
+                user.save()
                 send_otp_email(user, otp)
-            
-            # Always return success message for security
-            return standard_response(
-                success=True,
-                message="If an account with that email exists, an OTP has been sent.",
-                status_code=status.HTTP_200_OK
-            )
-        
-        return standard_response(
-            success=False,
-            message="Invalid request data",
-            errors=serializer.errors,
-            status_code=status.HTTP_400_BAD_REQUEST
-        )
-
+            return standard_response(success=True, message="If email exists, OTP sent.")
+        return standard_response(success=False, errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
 
 class PasswordResetOTPVerifyView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
-    """
-    API endpoint to verify OTP for password reset
-    """
     serializer_class = PasswordResetOTPVerifySerializer
-
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
-            email = serializer.validated_data['email'].lower()
-            otp = serializer.validated_data['otp']
-            
-            from users.models import User
+            email, otp = serializer.validated_data['email'].lower(), serializer.validated_data['otp']
             from business_account.models import BusinessAccount
-            
-            # Try to find user in either model
-            user = User.objects.filter(email=email).first()
-            if not user:
-                user = BusinessAccount.objects.filter(email=email).first()
-                
-            if user:
-                if user.otp == otp and user.is_otp_valid():
-                    # OTP is correct, allow password reset
-                    user.clear_otp()
-                    return standard_response(success=True, message="OTP verified successfully. You can now reset your password.")
-                else:
-                    return standard_response(success=False, message="Invalid or expired OTP.", status_code=status.HTTP_400_BAD_REQUEST)
-            
-            return standard_response(success=False, message="User not found.", status_code=status.HTTP_404_NOT_FOUND)
-        return standard_response(success=False, message="Invalid data.", errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
-
+            user = User.objects.filter(email=email).first() or BusinessAccount.objects.filter(email=email).first()
+            if user and user.otp == otp and user.is_otp_valid():
+                user.clear_otp()
+                return standard_response(success=True, message="OTP verified.")
+            return standard_response(success=False, message="Invalid OTP", status_code=status.HTTP_400_BAD_REQUEST)
+        return standard_response(success=False, errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
 
 class PasswordResetConfirmView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
-    """
-    API endpoint to confirm password reset with OTP
-    
-    POST /api/users/password-reset-confirm/
-    
-    Request body:
-    {
-        "email": "john@example.com",
-        "password": "NewSecurePass123!",
-        "confirm_password": "NewSecurePass123!"
-    }
-    """
-    
     serializer_class = PasswordResetConfirmSerializer
-    
     def post(self, request):
-        """Confirm password reset"""
         serializer = self.serializer_class(data=request.data)
-        
         if serializer.is_valid():
-            email = serializer.validated_data['email'].lower()
-            new_password = serializer.validated_data['password']
-            
-            from users.models import User
+            email, pwd = serializer.validated_data['email'].lower(), serializer.validated_data['password']
             from business_account.models import BusinessAccount
-            
-            # Try to find user in either model
-            user = User.objects.filter(email=email).first()
-            if not user:
-                user = BusinessAccount.objects.filter(email=email).first()
-                
+            user = User.objects.filter(email=email).first() or BusinessAccount.objects.filter(email=email).first()
             if user:
-                # Set new password
-                user.set_password(new_password)
+                user.set_password(pwd)
                 user.save()
-                
-                return standard_response(
-                    success=True,
-                    message="Password has been reset successfully. You can now login with your new password.",
-                    status_code=status.HTTP_200_OK
-                )
-            
-            return standard_response(
-                success=False,
-                message="User not found",
-                status_code=status.HTTP_404_NOT_FOUND
-            )
-        
-        return standard_response(
-            success=False,
-            message="Invalid request data",
-            errors=serializer.errors,
-            status_code=status.HTTP_400_BAD_REQUEST
-        )
-
+                return standard_response(success=True, message="Password reset success.")
+            return standard_response(success=False, message="Not found", status_code=status.HTTP_404_NOT_FOUND)
+        return standard_response(success=False, errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
 
 class PasswordChangeView(APIView):
     permission_classes = [IsAuthenticated]
     authentication_classes = [JWTAuthentication]
-    """
-    API endpoint to change password (authenticated user)
-    
-    POST /api/users/password-change/
-    
-    Request body:
-    {
-        "old_password": "OldPass123!",
-        "new_password": "NewSecurePass123!",
-        "confirm_password": "NewSecurePass123!"
-    }
-    """
-    
-    permission_classes = [IsAuthenticated]
     serializer_class = PasswordChangeSerializer
-    
     def post(self, request):
-        """Change password for authenticated user"""
         serializer = self.serializer_class(data=request.data)
-        
         if serializer.is_valid():
-            user = request.user
-            old_password = serializer.validated_data['old_password']
-            new_password = serializer.validated_data['new_password']
-            
-            # Verify old password
-            if not user.check_password(old_password):
-                return standard_response(
-                    success=False,
-                    message="Current password is incorrect",
-                    errors={'old_password': ['Current password is incorrect']},
-                    status_code=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Set new password
-            user.set_password(new_password)
-            user.save()
-            
-            return standard_response(
-                success=True,
-                message="Password changed successfully",
-                status_code=status.HTTP_200_OK
-            )
-        
-        return standard_response(
-            success=False,
-            message="Invalid request data",
-            errors=serializer.errors,
-            status_code=status.HTTP_400_BAD_REQUEST
-        )
-
-
-class UserProfileView(APIView):
-    permission_classes = [IsAuthenticated]
-    authentication_classes = [JWTAuthentication]
-    """
-    API endpoint to get and update user profile
-    
-    GET /api/users/profile/ - Get user profile
-    PUT /api/users/profile/ - Update full profile
-    PATCH /api/users/profile/ - Partial update profile
-    """
-    
-    permission_classes = [IsAuthenticated]
-    
-    def get(self, request):
-        """Get user profile"""
-        user = request.user
-        serializer = UserProfileSerializer(user, context={'request': request})
-        
-        return standard_response(
-            success=True,
-            message="Profile retrieved successfully",
-            data=serializer.data,
-            status_code=status.HTTP_200_OK
-        )
-    
-    def put(self, request):
-        """Update full user profile"""
-        user = request.user
-        serializer = UserProfileUpdateSerializer(user, data=request.data, context={'request': request})
-        
-        if serializer.is_valid():
-            serializer.save()
-            
-            # Return updated profile
-            profile_serializer = UserProfileSerializer(user, context={'request': request})
-            
-            return standard_response(
-                success=True,
-                message="Profile updated successfully",
-                data=profile_serializer.data,
-                status_code=status.HTTP_200_OK
-            )
-        
-        return standard_response(
-            success=False,
-            message="Profile update failed",
-            errors=serializer.errors,
-            status_code=status.HTTP_400_BAD_REQUEST
-        )
-    
-    def patch(self, request):
-        """Partial update user profile"""
-        user = request.user
-        serializer = UserProfileUpdateSerializer(user, data=request.data, partial=True, context={'request': request})
-        
-        if serializer.is_valid():
-            serializer.save()
-            
-            # Return updated profile
-            profile_serializer = UserProfileSerializer(user, context={'request': request})
-            
-            return standard_response(
-                success=True,
-                message="Profile updated successfully",
-                data=profile_serializer.data,
-                status_code=status.HTTP_200_OK
-            )
-        
-        return standard_response(
-            success=False,
-            message="Profile update failed",
-            errors=serializer.errors,
-            status_code=status.HTTP_400_BAD_REQUEST
-        )
-
+            if not request.user.check_password(serializer.validated_data['old_password']):
+                return standard_response(success=False, message="Old password wrong", status_code=status.HTTP_400_BAD_REQUEST)
+            request.user.set_password(serializer.validated_data['new_password'])
+            request.user.save()
+            return standard_response(success=True, message="Changed.")
+        return standard_response(success=False, errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
 
 class AccountDeleteView(APIView):
     permission_classes = [IsAuthenticated]
     authentication_classes = [JWTAuthentication]
-    """
-    API endpoint to delete user account
-    
-    DELETE /api/users/account-delete/
-    
-    Request body:
-    {
-        "password": "user_password",
-        "confirm_deletion": true
-    }
-    """
-    
-    permission_classes = [IsAuthenticated]
     serializer_class = AccountDeleteSerializer
-    
     def delete(self, request):
-        """Delete user account"""
         serializer = self.serializer_class(data=request.data)
-        
         if serializer.is_valid():
-            user = request.user
-            password = serializer.validated_data['password']
-            
-            # Verify password
-            if not user.check_password(password):
-                return standard_response(
-                    success=False,
-                    message="Incorrect password",
-                    errors={'password': ['Incorrect password']},
-                    status_code=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Store email for confirmation email
-            user_email = user.email
-            user_name = user.get_full_name()
-            
-            # Send account deletion confirmation email before deleting
-            try:
-                send_account_deletion_email(user)
-            except Exception:
-                pass  # Continue with deletion even if email fails
-            
-            # Delete user account
-            user.delete()
-            
-            return standard_response(
-                success=True,
-                message="Account deleted successfully",
-                status_code=status.HTTP_200_OK
-            )
-        
-        return standard_response(
-            success=False,
-            message="Account deletion failed",
-            errors=serializer.errors,
-            status_code=status.HTTP_400_BAD_REQUEST
-        )
-
+            if not request.user.check_password(serializer.validated_data['password']):
+                return standard_response(success=False, message="Wrong password", status_code=status.HTTP_400_BAD_REQUEST)
+            send_account_deletion_email(request.user)
+            request.user.delete()
+            return standard_response(success=True, message="Deleted.")
+        return standard_response(success=False, errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
 
 class CustomTokenRefreshView(TokenRefreshView):
-    """
-    Custom token refresh view with standard response format.
-    Handles both standard User and BusinessAccount tokens.
-    """
     serializer_class = MultiModelTokenRefreshSerializer
-    
     def post(self, request, *args, **kwargs):
-        """Refresh access token"""
-        try:
-            response = super().post(request, *args, **kwargs)
-            
-            return standard_response(
-                success=True,
-                message="Token refreshed successfully",
-                data=response.data,
-                status_code=status.HTTP_200_OK
-            )
-        
-        except TokenError as e:
-            return standard_response(
-                success=False,
-                message="Token refresh failed",
-                errors={'detail': str(e)},
-                status_code=status.HTTP_401_UNAUTHORIZED
-            )
-        except Exception as e:
-            # Handle user not found during refresh logic in serializer
-            if "User matching query does not exist" in str(e):
-                return standard_response(
-                    success=False,
-                    message="User associated with this token no longer exists",
-                    status_code=status.HTTP_401_UNAUTHORIZED
-                )
-            return standard_response(
-                success=False,
-                message="An unexpected error occurred during token refresh",
-                errors={'detail': str(e)},
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
+        try: return standard_response(success=True, data=super().post(request, *args, **kwargs).data)
+        except Exception as e: return standard_response(success=False, message=str(e), status_code=status.HTTP_401_UNAUTHORIZED)
 
 class CustomTokenVerifyView(TokenVerifyView):
-    """
-    Custom token verify view with standard response format
-    
-    POST /api/users/token/verify/
-    
-    Request body:
-    {
-        "token": "access_token_here"
-    }
-    """
-    
     def post(self, request, *args, **kwargs):
-        """Verify access token"""
-        try:
-            response = super().post(request, *args, **kwargs)
-            
-            return standard_response(
-                success=True,
-                message="Token is valid",
-                data={'valid': True},
-                status_code=status.HTTP_200_OK
-            )
-        
-        except TokenError as e:
-            return standard_response(
-                success=False,
-                message="Token is invalid or expired",
-                data={'valid': False},
-                errors={'detail': str(e)},
-                status_code=status.HTTP_401_UNAUTHORIZED
-            )
-        except InvalidToken as e:
-            return standard_response(
-                success=False,
-                message="Invalid token",
-                data={'valid': False},
-                errors={'detail': str(e)},
-                status_code=status.HTTP_401_UNAUTHORIZED
-            )
+        try: return standard_response(success=True, data={'valid': True})
+        except Exception as e: return standard_response(success=False, message=str(e), status_code=status.HTTP_401_UNAUTHORIZED)
 
 class SetLanguageView(APIView):
     permission_classes = [IsAuthenticated]
-    serializer_class = LanguagePreferenceSerializer
-
-    def post(self, request, *args, **kwargs):
-        serializer = self.serializer_class(data=request.data)
-        if serializer.is_valid():
-            language = serializer.validated_data['language']
-            user = request.user
-            user.preferred_language = language
-            user.save(update_fields=['preferred_language'])
-            return standard_response(success=True, message="Language preference updated successfully.", data={'language': language})
-        return standard_response(success=False, message="Invalid request data", errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
+    def post(self, request):
+        lang = request.data.get('language')
+        if lang in ['en', 'hi', 'pt']:
+            request.user.preferred_language = lang
+            request.user.save()
+            return standard_response(success=True, message="Language set.")
+        return standard_response(success=False, message="Invalid lang", status_code=status.HTTP_400_BAD_REQUEST)
 
 class UserProfileRegistrationView(generics.UpdateAPIView):
     serializer_class = UserProfileRegistrationSerializer
     permission_classes = [IsAuthenticated]
-    authentication_classes = [JWTAuthentication]
-
-    def get_object(self):
-        return self.request.user
-
+    def get_object(self): return self.request.user
     def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer = self.get_serializer(self.get_object(), data=request.data, partial=True)
         if serializer.is_valid():
-            self.perform_update(serializer)
-            return standard_response(
-                success=True,
-                message="Profile registration completed successfully",
-                data=serializer.data,
-                status_code=status.HTTP_200_OK
-            )
-        return standard_response(
-            success=False,
-            message="Profile registration failed",
-            errors=serializer.errors,
-            status_code=status.HTTP_400_BAD_REQUEST
-        )
-
-    def perform_update(self, serializer):
-        user = serializer.save()
-        if not user.is_profile_complete:
+            user = serializer.save()
             user.is_profile_complete = True
-            user.save(update_fields=['is_profile_complete'])
+            user.save()
+            return standard_response(success=True, message="Registered", data=serializer.data)
+        return standard_response(success=False, errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
+
+@csrf_exempt
+def delete_profile_data_request_view(request): return render(request, 'users/delete_profile_data_request.html')
+
+class ProfileDataDeletionAPIView(APIView):
+    def post(self, request):
+        email = request.data.get('email')
+        user = User.objects.filter(email=email).first()
+        if user:
+            req, _ = ProfileDataDeletionRequest.objects.get_or_create(user=user, email=email)
+            link = request.build_absolute_uri(reverse('users:verify_profile_data_deletion', kwargs={'token': str(req.verification_token)}))
+            send_mail('Verify Deletion', f'Link: {link}', 'from@example.com', [email])
+        return render(request, 'users/delete_profile_data_submitted.html')
+
+class VerifyProfileDataDeletionView(APIView):
+    def get(self, request, token):
+        try:
+            req = ProfileDataDeletionRequest.objects.get(verification_token=token, status='pending')
+            if req.user:
+                u = req.user
+                u.first_name, u.last_name, u.about = "User", "", None
+                u.save()
+            req.status = 'completed'; req.save()
+            return render(request, 'users/delete_profile_data_confirmed.html')
+        except: return standard_response(success=False, message="Invalid link", status_code=status.HTTP_400_BAD_REQUEST)
+
+@csrf_exempt
+def account_deletion_request_view(request): return render(request, 'users/delete_account.html')
+
+class AccountDeletionAPIView(APIView):
+    def post(self, request):
+        email = request.data.get('email')
+        user = User.objects.filter(email=email).first()
+        if user:
+            req, _ = AccountDeletionRequest.objects.get_or_create(user=user, email=email)
+            link = request.build_absolute_uri(reverse('users:verify_account_deletion', kwargs={'token': str(req.verification_token)}))
+            send_mail('Verify Deletion', f'Link: {link}', 'from@example.com', [email])
+        return render(request, 'users/deletion_request_submitted.html')
+
+class VerifyAccountDeletionView(APIView):
+    def get(self, request, token):
+        try:
+            req = AccountDeletionRequest.objects.get(verification_token=token, status='pending')
+            if req.user: req.user.delete()
+            req.status = 'completed'; req.save()
+            return render(request, 'users/deletion_confirmed.html')
+        except: return standard_response(success=False, message="Invalid link", status_code=status.HTTP_400_BAD_REQUEST)
+
+class UserLogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+    def post(self, request):
+        try:
+            token = RefreshToken(request.data.get('refresh'))
+            token.blacklist()
+            return standard_response(success=True, message="Logged out")
+        except: return standard_response(success=True, message="Logged out")
