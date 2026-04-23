@@ -24,7 +24,7 @@ from .exceptions import (
 )
 from .utils import validate_age
 
-from .models import UserLoginHistory, AccountDeletionRequest, ProfileDataDeletionRequest, Education, Experience
+from .models import UserLoginHistory, AccountDeletionRequest, ProfileDataDeletionRequest, Education, Experience, Recommendation
 
 User = get_user_model()
 
@@ -628,3 +628,89 @@ class SupportTicketSerializer(serializers.Serializer):
     email_address = serializers.EmailField(help_text="User's email address for contact")
     subject = serializers.CharField(max_length=255, help_text="Subject of the support request")
     message = serializers.CharField(style={'base_template': 'textarea.html'}, help_text="Detailed support message")
+
+
+class RecommendationSerializer(serializers.ModelSerializer):
+    """
+    Serializer for displaying recommendations
+    """
+    giver_name = serializers.SerializerMethodField()
+    giver_headline = serializers.SerializerMethodField()
+    giver_id = serializers.SerializerMethodField()
+    date = serializers.DateTimeField(source='created_at', read_only=True)
+
+    class Meta:
+        model = Recommendation
+        fields = ['id', 'giver_id', 'giver_name', 'giver_headline', 'message', 'date']
+
+    def get_giver_id(self, obj):
+        return str(obj.giver_object_id)
+
+    def get_giver_name(self, obj):
+        giver = obj.giver
+        if not giver: return "Unknown"
+        if isinstance(giver, User):
+            return f"{giver.first_name} {giver.last_name}".strip() or giver.email
+        return getattr(giver, 'business_name', 'Unknown') or giver.email
+
+    def get_giver_headline(self, obj):
+        giver = obj.giver
+        if not giver: return ""
+        return getattr(giver, 'headline', '')
+
+
+class GiveRecommendationSerializer(serializers.ModelSerializer):
+    """
+    Serializer for creating a new recommendation
+    """
+    receiver_id = serializers.UUIDField(write_only=True)
+    receiver_type = serializers.ChoiceField(choices=['user', 'business'], write_only=True)
+
+    class Meta:
+        model = Recommendation
+        fields = ['receiver_id', 'receiver_type', 'message']
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        receiver_id = attrs['receiver_id']
+        receiver_type = attrs['receiver_type']
+
+        # Prevent self-recommendation
+        if str(receiver_id) == str(request.user.id):
+            raise serializers.ValidationError("You cannot recommend yourself.")
+
+        # Find the receiver model
+        from business_account.models import BusinessAccount
+        if receiver_type == 'user':
+            model = User
+        else:
+            model = BusinessAccount
+
+        try:
+            receiver = model.objects.get(id=receiver_id)
+            attrs['receiver_instance'] = receiver
+        except model.DoesNotExist:
+            raise serializers.ValidationError(f"The {receiver_type} with ID {receiver_id} does not exist.")
+
+        return attrs
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        giver = request.user
+        receiver = validated_data.pop('receiver_instance')
+        message = validated_data['message']
+
+        # Content types
+        from business_account.models import BusinessAccount
+        giver_ct = ContentType.objects.get_for_model(giver)
+        receiver_ct = ContentType.objects.get_for_model(receiver)
+
+        # Update or create (allows users to update their existing recommendation)
+        recommendation, created = Recommendation.objects.update_or_create(
+            giver_content_type=giver_ct,
+            giver_object_id=giver.id,
+            receiver_content_type=receiver_ct,
+            receiver_object_id=receiver.id,
+            defaults={'message': message}
+        )
+        return recommendation
