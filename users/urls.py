@@ -28,6 +28,8 @@ from .views import (
     SupportTicketView,
     GlobalUserSearchView,
     PasswordResetConfirmView,
+    RecommendationListView,
+    GiveRecommendationView,
 )
 
 app_name = 'users'
@@ -59,6 +61,10 @@ urlpatterns = [
     path('set-language/', SetLanguageView.as_view(), name='set-language'),
     path('support-ticket/', SupportTicketView.as_view(), name='support-ticket'),
     path('search/', GlobalUserSearchView.as_view(), name='user-search'),
+
+    # Recommendation endpoints
+    path('recommendations/', RecommendationListView.as_view(), name='recommendation-list'),
+    path('recommendations/give/', GiveRecommendationView.as_view(), name='recommendation-give'),
 
     # Education endpoints
     path('education/', EducationListCreateView.as_view(), name='education-list-create'),
