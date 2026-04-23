@@ -1,10 +1,25 @@
 services:
+  # PostgreSQL Database
+  db:
+    image: postgres:16-alpine
+    restart: always
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_DB=business_db
+      - POSTGRES_USER=business_user
+      - POSTGRES_PASSWORD=business_password
+    ports:
+      - "5432:5432"
+
+  # Redis service for WebSockets channel layers
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
     restart: always
 
+  # Main Django Application running with Daphne
   web:
     build: .
     restart: always
@@ -12,12 +27,16 @@ services:
       - .env
     environment:
       - REDIS_URL=redis://redis:6379/1
+      # Connect to the 'db' container
+      - DATABASE_URL=postgres://business_user:business_password@db:5432/business_db
     volumes:
       - static_volume:/app/staticfiles
       - media_volume:/app/media
     depends_on:
+      - db
       - redis
 
+  # Nginx Reverse Proxy
   nginx:
     image: nginx:1.25-alpine
     ports:
@@ -40,12 +59,12 @@ services:
       - certbot_etc:/etc/letsencrypt
       - certbot_var:/var/lib/letsencrypt
       - certbot_www:/var/www/certbot
-    # Changed to command so manual 'run' works properly
     command: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
 
 volumes:
   static_volume:
   media_volume:
+  postgres_data:
   certbot_etc:
   certbot_var:
   certbot_www:
