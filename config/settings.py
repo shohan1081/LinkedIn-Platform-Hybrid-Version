@@ -140,25 +140,22 @@ if USE_S3:
     
     AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com'
     AWS_S3_FILE_OVERWRITE = False
-    AWS_QUERYSTRING_AUTH = False  # Permanent public URLs (good for profile pics)
-    AWS_DEFAULT_ACL = None       # Use bucket default (recommended for modern S3)
+    AWS_QUERYSTRING_AUTH = False  # Permanent public URLs
+    AWS_DEFAULT_ACL = None       # Use bucket default
 
     STORAGES = {
         "default": {
-            "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
-            "OPTIONS": {
-                "location": "media",
-            },
+            "BACKEND": "storages.backends.s3.S3Storage",
         },
         "staticfiles": {
-            "BACKEND": "storages.backends.s3boto3.S3StaticStorage",
+            "BACKEND": "storages.backends.s3.S3StaticStorage",
             "OPTIONS": {
                 "location": "static",
             },
         },
     }
     
-    MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/media/'
+    MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/'
     STATIC_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/static/'
 else:
     STATIC_URL = 'static/'
