@@ -475,6 +475,7 @@ class SetLanguageView(APIView):
 class UserProfileRegistrationView(generics.UpdateAPIView):
     serializer_class = UserProfileRegistrationSerializer
     permission_classes = [IsAuthenticated]
+    authentication_classes = [MultiModelJWTAuthentication]
     def get_object(self): return self.request.user
     def update(self, request, *args, **kwargs):
         serializer = self.get_serializer(self.get_object(), data=request.data, partial=True)
