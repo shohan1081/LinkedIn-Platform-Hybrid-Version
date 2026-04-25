@@ -4,6 +4,7 @@ All serializers follow standard response format for consistency
 """
 
 from django.utils import timezone
+from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers
 from django.contrib.auth import get_user_model, authenticate
 from django.contrib.auth.password_validation import validate_password as django_validate_password
