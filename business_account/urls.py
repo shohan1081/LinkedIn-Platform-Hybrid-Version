@@ -19,6 +19,7 @@ from .views import (
     BusinessMemberListView,
     RemoveMemberView,
 )
+from users.views import RecommendationListView, GiveRecommendationView
 
 app_name = 'business_account'
 
@@ -52,4 +53,8 @@ urlpatterns = [
     path('verification/requests/<int:pk>/action/', VerificationRequestActionView.as_view(), name='verification-request-action'),
     path('members/', BusinessMemberListView.as_view(), name='member-list'),
     path('members/<uuid:user_id>/remove/', RemoveMemberView.as_view(), name='member-remove'),
+
+    # Recommendation endpoints
+    path('recommendations/', RecommendationListView.as_view(), name='recommendation-list'),
+    path('recommendations/give/', GiveRecommendationView.as_view(), name='recommendation-give'),
 ]
