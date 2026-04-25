@@ -13,6 +13,7 @@ from rest_framework import status, generics
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework_simplejwt.authentication import JWTAuthentication
+from business_account.backends import MultiModelJWTAuthentication
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView, TokenVerifyView
@@ -79,7 +80,7 @@ class RecommendationListView(APIView):
     - type: 'user' or 'business'
     """
     permission_classes = [AllowAny]
-    authentication_classes = [JWTAuthentication]
+    authentication_classes = [MultiModelJWTAuthentication]
 
     def get(self, request):
         receiver_id = request.query_params.get('id')
@@ -118,7 +119,7 @@ class GiveRecommendationView(APIView):
     Give or update a recommendation for another user/business.
     """
     permission_classes = [IsAuthenticated]
-    authentication_classes = [JWTAuthentication]
+    authentication_classes = [MultiModelJWTAuthentication]
 
     def post(self, request):
         serializer = GiveRecommendationSerializer(data=request.data, context={'request': request})
