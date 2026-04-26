@@ -49,12 +49,14 @@ INSTALLED_APPS = [
     'business_account',
     'posts',
     'chat',
+    'notifications',
     # Third-party apps
     'rest_framework',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'storages',
+    'push_notifications',
 ]
 
 MIDDLEWARE = [
@@ -216,4 +218,15 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
+}
+
+# Push Notifications Settings
+# Set FIREBASE_APP_CREDENTIALS in .env with path to your serviceAccountKey.json
+FIREBASE_APP_CREDENTIALS = config('FIREBASE_APP_CREDENTIALS', default=os.path.join(BASE_DIR, 'firebase-credentials.json'))
+
+PUSH_NOTIFICATIONS_SETTINGS = {
+    "FCM_AUTH_KEY": config('FCM_AUTH_KEY', default=''), # For Legacy FCM if needed
+    "FCM_SENDER_ID": config('FCM_SENDER_ID', default=''),
+    "FCM_ERROR_TIMEOUT": 30,
+    "USER_MODEL": "users.User",
 }
