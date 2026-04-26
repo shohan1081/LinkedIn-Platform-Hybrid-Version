@@ -30,6 +30,7 @@ from .views import (
     PasswordResetConfirmView,
     RecommendationListView,
     GiveRecommendationView,
+    OtherUserProfileView,
 )
 
 app_name = 'users'
@@ -61,6 +62,7 @@ urlpatterns = [
     path('set-language/', SetLanguageView.as_view(), name='set-language'),
     path('support-ticket/', SupportTicketView.as_view(), name='support-ticket'),
     path('search/', GlobalUserSearchView.as_view(), name='user-search'),
+    path('profile/<uuid:pk>/', OtherUserProfileView.as_view(), name='other-user-profile'),
 
     # Recommendation endpoints
     path('recommendations/', RecommendationListView.as_view(), name='recommendation-list'),
