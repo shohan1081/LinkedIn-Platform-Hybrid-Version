@@ -588,6 +588,50 @@ class UserProfileRegistrationSerializer(serializers.ModelSerializer):
         fields = ['first_name', 'last_name', 'date_of_birth', 'address', 'address_line_2', 'city', 'state', 'zip_code', 'headline', 'profile_picture', 'cover_photo']
 
 
+class PublicUserProfileSerializer(serializers.ModelSerializer):
+    """
+    Serializer for viewing another user's public profile
+    """
+    education = EducationSerializer(many=True, read_only=True, source='education_set')
+    experience = ExperienceSerializer(many=True, read_only=True, source='experience_set')
+    recommendations = RecommendationSerializer(many=True, read_only=True)
+    posts = serializers.SerializerMethodField()
+    full_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = [
+            'id', 'full_name', 'first_name', 'last_name', 'headline', 'about', 
+            'profile_picture', 'cover_photo', 'occupation', 'country', 'city', 
+            'is_verified', 'education', 'experience', 'recommendations', 'posts'
+        ]
+
+    def get_full_name(self, obj):
+        return f"{obj.first_name} {obj.last_name}".strip()
+
+    def get_posts(self, obj):
+        from posts.models import NeedPost, OfferPost
+        from posts.serializers import NeedPostSerializer, OfferPostSerializer
+        
+        need_posts = NeedPost.objects.filter(author_content_type=ContentType.objects.get_for_model(User), author_object_id=obj.id)
+        offer_posts = OfferPost.objects.filter(author_content_type=ContentType.objects.get_for_model(User), author_object_id=obj.id)
+        
+        return {
+            'need_posts': NeedPostSerializer(need_posts, many=True, context=self.context).data,
+            'offer_posts': OfferPostSerializer(offer_posts, many=True, context=self.context).data
+        }
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        # Manually attach recommendations because it's a GenericRelation/GenericForeignKey
+        recommendations = Recommendation.objects.filter(
+            receiver_content_type=ContentType.objects.get_for_model(User),
+            receiver_object_id=instance.id
+        )
+        representation['recommendations'] = RecommendationSerializer(recommendations, many=True, context=self.context).data
+        return representation
+
+
 class EducationSerializer(serializers.ModelSerializer):
     """
     Serializer for Education model
