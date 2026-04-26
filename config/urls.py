@@ -33,6 +33,8 @@ urlpatterns = [
     path('api/posts/', include('posts.urls')),
     # Chat app
     path('api/chat/', include('chat.urls')),
+    # Notifications app
+    path('api/notifications/', include('notifications.urls')),
     # Temporary test upload endpoint
     path('api/test-upload/', temp_views.TestFileUploadView.as_view(), name='test-file-upload'),
 ]
