@@ -18,6 +18,7 @@ from .views import (
     VerificationRequestActionView,
     BusinessMemberListView,
     RemoveMemberView,
+    OtherBusinessProfileView,
 )
 from users.views import RecommendationListView, GiveRecommendationView
 
@@ -46,6 +47,7 @@ urlpatterns = [
     # Profile management
     path('profile-register/', BusinessAccountProfileRegistrationView.as_view(), name='profile-register'),
     path('profile/', BusinessAccountProfileView.as_view(), name='profile'),
+    path('profile/<uuid:pk>/', OtherBusinessProfileView.as_view(), name='other-business-profile'),
 
     # Verification management
     path('verification/request/', VerificationRequestCreateView.as_view(), name='verification-request-create'),
