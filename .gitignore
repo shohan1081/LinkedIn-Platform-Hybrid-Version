@@ -41,3 +41,4 @@ venv/
 Thumbs.db
 .vscode/
 .idea/
+firebase-credentials.json
