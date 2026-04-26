@@ -39,6 +39,7 @@ from .serializers import (
     SupportTicketSerializer,
     RecommendationSerializer,
     GiveRecommendationSerializer,
+    PublicUserProfileSerializer,
 )
 from .utils import (
     send_welcome_email,
@@ -532,6 +533,43 @@ class VerifyAccountDeletionView(APIView):
             req.status = 'completed'; req.save()
             return render(request, 'users/deletion_confirmed.html')
         except: return standard_response(success=False, message="Invalid link", status_code=status.HTTP_400_BAD_REQUEST)
+
+class OtherUserProfileView(APIView):
+    """
+    View another user's public profile by their ID (supports both regular and business accounts).
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [MultiModelJWTAuthentication]
+
+    def get(self, request, pk):
+        from business_account.models import BusinessAccount
+        from business_account.serializers import PublicBusinessProfileSerializer
+
+        # Try to find a regular user first
+        try:
+            user = User.objects.get(pk=pk)
+            serializer = PublicUserProfileSerializer(user, context={'request': request})
+            return standard_response(
+                success=True,
+                message="User profile retrieved successfully",
+                data={**serializer.data, 'account_type': 'personal'}
+            )
+        except User.DoesNotExist:
+            # If not found, try to find a business account
+            try:
+                business = BusinessAccount.objects.get(pk=pk)
+                serializer = PublicBusinessProfileSerializer(business, context={'request': request})
+                return standard_response(
+                    success=True,
+                    message="Business profile retrieved successfully",
+                    data={**serializer.data, 'account_type': 'business'}
+                )
+            except BusinessAccount.DoesNotExist:
+                return standard_response(
+                    success=False,
+                    message="Account not found",
+                    status_code=status.HTTP_404_NOT_FOUND
+                )
 
 class UserLogoutView(APIView):
     permission_classes = [IsAuthenticated]
