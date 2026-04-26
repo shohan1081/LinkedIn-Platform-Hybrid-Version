@@ -3,6 +3,7 @@ API Serializers for business account authentication and profile management
 """
 
 from django.utils import timezone
+from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password as django_validate_password
@@ -387,3 +388,43 @@ class PasswordChangeSerializer(serializers.Serializer):
             })
         
         return attrs
+
+
+class PublicBusinessProfileSerializer(serializers.ModelSerializer):
+    """
+    Serializer for viewing a business's public profile
+    """
+    recommendations = serializers.SerializerMethodField()
+    posts = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BusinessAccount
+        fields = [
+            'id', 'business_name', 'headline', 'about', 'industry_category', 
+            'website', 'city', 'state', 'profile_picture', 
+            'cover_photo', 'recommendations', 'posts'
+        ]
+
+    def get_posts(self, obj):
+        from posts.models import NeedPost, OfferPost
+        from posts.serializers import NeedPostSerializer, OfferPostSerializer
+        
+        business_ct = ContentType.objects.get_for_model(BusinessAccount)
+        need_posts = NeedPost.objects.filter(author_content_type=business_ct, author_object_id=obj.id)
+        offer_posts = OfferPost.objects.filter(author_content_type=business_ct, author_object_id=obj.id)
+        
+        return {
+            'need_posts': NeedPostSerializer(need_posts, many=True, context=self.context).data,
+            'offer_posts': OfferPostSerializer(offer_posts, many=True, context=self.context).data
+        }
+
+    def get_recommendations(self, obj):
+        from users.models import Recommendation
+        from users.serializers import RecommendationSerializer
+        
+        business_ct = ContentType.objects.get_for_model(BusinessAccount)
+        recommendations = Recommendation.objects.filter(
+            receiver_content_type=business_ct,
+            receiver_object_id=obj.id
+        )
+        return RecommendationSerializer(recommendations, many=True, context=self.context).data
