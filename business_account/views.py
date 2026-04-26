@@ -24,6 +24,7 @@ from .serializers import (
     PasswordResetOTPVerifySerializer,
     VerificationRequestSerializer,
     UserSimpleSerializer,
+    PublicBusinessProfileSerializer,
 )
 from users.utils import (
     generate_otp,
@@ -786,3 +787,27 @@ class RemoveMemberView(APIView):
             user.save(update_fields=['is_verified'])
 
         return standard_response(success=True, message="Member removed successfully.")
+
+
+class OtherBusinessProfileView(APIView):
+    """
+    View a business's public profile by their ID.
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [MultiModelJWTAuthentication]
+
+    def get(self, request, pk):
+        try:
+            business = BusinessAccount.objects.get(pk=pk)
+            serializer = PublicBusinessProfileSerializer(business, context={'request': request})
+            return standard_response(
+                success=True,
+                message="Business profile retrieved successfully",
+                data=serializer.data
+            )
+        except BusinessAccount.DoesNotExist:
+            return standard_response(
+                success=False,
+                message="Business not found",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
