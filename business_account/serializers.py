@@ -396,14 +396,19 @@ class PublicBusinessProfileSerializer(serializers.ModelSerializer):
     """
     recommendations = serializers.SerializerMethodField()
     posts = serializers.SerializerMethodField()
+    verified_members_count = serializers.SerializerMethodField()
 
     class Meta:
         model = BusinessAccount
         fields = [
             'id', 'business_name', 'headline', 'about', 'industry_category', 
             'website', 'city', 'state', 'profile_picture', 
-            'cover_photo', 'recommendations', 'posts'
+            'cover_photo', 'recommendations', 'posts', 'verified_members_count'
         ]
+
+    def get_verified_members_count(self, obj):
+        from .models import VerificationRequest
+        return VerificationRequest.objects.filter(business_account=obj, status='accepted').count()
 
     def get_posts(self, obj):
         from posts.models import NeedPost, OfferPost
@@ -428,3 +433,25 @@ class PublicBusinessProfileSerializer(serializers.ModelSerializer):
             receiver_object_id=obj.id
         )
         return RecommendationSerializer(recommendations, many=True, context=self.context).data
+
+
+class SimpleBusinessAccountSerializer(serializers.ModelSerializer):
+    """
+    Simplified serializer for business account listing
+    """
+    verified_members_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BusinessAccount
+        fields = ['id', 'business_name', 'profile_picture', 'industry_category', 'verified_members_count']
+
+    def get_verified_members_count(self, obj):
+        from .models import VerificationRequest
+        return VerificationRequest.objects.filter(business_account=obj, status='accepted').count()
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+        if request and instance.profile_picture:
+            representation['profile_picture'] = request.build_absolute_uri(instance.profile_picture.url)
+        return representation
