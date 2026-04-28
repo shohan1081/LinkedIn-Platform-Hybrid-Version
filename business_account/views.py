@@ -25,6 +25,7 @@ from .serializers import (
     VerificationRequestSerializer,
     UserSimpleSerializer,
     PublicBusinessProfileSerializer,
+    SimpleBusinessAccountSerializer,
 )
 from users.utils import (
     generate_otp,
@@ -811,3 +812,51 @@ class OtherBusinessProfileView(APIView):
                 message="Business not found",
                 status_code=status.HTTP_404_NOT_FOUND
             )
+
+class BusinessAccountListView(generics.ListAPIView):
+    """
+    List all business accounts for verification selection.
+    """
+    queryset = BusinessAccount.objects.filter(is_active=True, is_profile_complete=True)
+    serializer_class = SimpleBusinessAccountSerializer
+    authentication_classes = [MultiModelJWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return standard_response(
+            success=True,
+            message="Business accounts retrieved successfully",
+            data=serializer.data
+        )
+
+class PublicBusinessMemberListView(APIView):
+    """
+    List all verified members (Users) of a specific business account.
+    Accessible by any authenticated user.
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [MultiModelJWTAuthentication]
+    serializer_class = UserSimpleSerializer
+
+    def get(self, request, pk):
+        try:
+            business = BusinessAccount.objects.get(pk=pk)
+        except BusinessAccount.DoesNotExist:
+            return standard_response(
+                success=False, 
+                message="Business account not found.", 
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Members are users who have an accepted verification request with this business
+        memberships = VerificationRequest.objects.filter(business_account=business, status='accepted')
+        users = [membership.user for membership in memberships]
+        serializer = self.serializer_class(users, many=True, context={'request': request})
+        
+        return standard_response(
+            success=True,
+            message=f"Verified members for {business.business_name or business.email} retrieved successfully.",
+            data=serializer.data
+        )
