@@ -16,6 +16,7 @@ from .views import (
     VerificationRequestCreateView,
     VerificationRequestListView,
     VerificationRequestActionView,
+    UserLeaveVerificationView,
     BusinessMemberListView,
     RemoveMemberView,
     OtherBusinessProfileView,
@@ -57,6 +58,7 @@ urlpatterns = [
     path('verification/request/', VerificationRequestCreateView.as_view(), name='verification-request-create'),
     path('verification/requests/', VerificationRequestListView.as_view(), name='verification-request-list'),
     path('verification/requests/<int:pk>/action/', VerificationRequestActionView.as_view(), name='verification-request-action'),
+    path('verification/leave/', UserLeaveVerificationView.as_view(), name='verification-leave'),
     path('members/', BusinessMemberListView.as_view(), name='member-list'),
     path('members/<uuid:user_id>/remove/', RemoveMemberView.as_view(), name='member-remove'),
 
