@@ -6,6 +6,7 @@ All serializers follow standard response format for consistency
 from django.utils import timezone
 from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers
+from business_account.models import BusinessAccount
 from django.contrib.auth import get_user_model, authenticate
 from django.contrib.auth.password_validation import validate_password as django_validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -292,6 +293,22 @@ class PasswordChangeSerializer(serializers.Serializer):
         return attrs
 
 
+class VerifiedByBusinessSerializer(serializers.ModelSerializer):
+    """
+    Serializer to show which business verified the user
+    """
+    class Meta:
+        model = BusinessAccount
+        fields = ['id', 'business_name', 'profile_picture', 'industry_category']
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+        if request and instance.profile_picture:
+            representation['profile_picture'] = request.build_absolute_uri(instance.profile_picture.url)
+        return representation
+
+
 class UserProfileSerializer(serializers.ModelSerializer):
     """
     Serializer for user profile (read and update)
@@ -305,6 +322,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     is_verified = serializers.BooleanField(read_only=True)
     is_profile_complete = serializers.BooleanField(read_only=True)
     account_type = serializers.SerializerMethodField()
+    verified_by = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -333,6 +351,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'is_verified',
             'is_profile_complete',
             'account_type',
+            'verified_by',
             'date_joined',
             'last_login',
         ]
@@ -347,6 +366,13 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'date_joined',
             'last_login',
         ]
+
+    def get_verified_by(self, obj):
+        from business_account.models import VerificationRequest
+        # Get all business accounts that have an accepted verification request for this user
+        verifications = VerificationRequest.objects.filter(user=obj, status='accepted').select_related('business_account')
+        businesses = [v.business_account for v in verifications]
+        return VerifiedByBusinessSerializer(businesses, many=True, context=self.context).data
 
     def get_author_id(self, obj):
         return str(obj.id)
@@ -669,14 +695,21 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
     recommendations = RecommendationSerializer(many=True, read_only=True)
     posts = serializers.SerializerMethodField()
     full_name = serializers.SerializerMethodField()
+    verified_by = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             'id', 'full_name', 'first_name', 'last_name', 'headline', 'about', 
             'profile_picture', 'cover_photo', 'occupation', 'country', 'city', 
-            'is_verified', 'education', 'experience', 'recommendations', 'posts'
+            'is_verified', 'verified_by', 'education', 'experience', 'recommendations', 'posts'
         ]
+
+    def get_verified_by(self, obj):
+        from business_account.models import VerificationRequest
+        verifications = VerificationRequest.objects.filter(user=obj, status='accepted').select_related('business_account')
+        businesses = [v.business_account for v in verifications]
+        return VerifiedByBusinessSerializer(businesses, many=True, context=self.context).data
 
     def get_full_name(self, obj):
         return f"{obj.first_name} {obj.last_name}".strip()
@@ -725,7 +758,7 @@ class GiveRecommendationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("You cannot recommend yourself.")
 
         # Find the receiver model
-        from business_account.models import BusinessAccount
+        
         if receiver_type == 'user':
             model = User
         else:
