@@ -235,3 +235,9 @@ PUSH_NOTIFICATIONS_SETTINGS = {
 # Celery (Development Mode - no RabbitMQ required)
 CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True
+
+CORS_ALLOW_CREDENTIALS = True
+CSRF_TRUSTED_ORIGINS = [
+    "https://anexousa.com",
+    "https://www.anexousa.com",
+]
