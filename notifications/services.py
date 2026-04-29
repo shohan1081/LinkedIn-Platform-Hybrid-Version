@@ -30,7 +30,7 @@ def create_notification(recipient, title, message, notification_type, target=Non
         notification.save()
 
     # Trigger async push notification
-    send_push_notification_task.delay(
+    send_push_notification_task(
         str(recipient_ct.id),
         str(recipient.id),
         title,
