@@ -230,3 +230,8 @@ PUSH_NOTIFICATIONS_SETTINGS = {
     "FCM_ERROR_TIMEOUT": 30,
     "USER_MODEL": "users.User",
 }
+
+
+# Celery (Development Mode - no RabbitMQ required)
+CELERY_TASK_ALWAYS_EAGER = True
+CELERY_TASK_EAGER_PROPAGATES = True
