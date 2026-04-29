@@ -611,6 +611,14 @@ class VerificationRequestCreateView(APIView):
                 status_code=status.HTTP_403_FORBIDDEN
             )
         
+        # Option B: Enforce single active verification
+        if request.user.is_verified:
+            return standard_response(
+                success=False, 
+                message="You are already verified by a business. You can only be verified by one business at a time.", 
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
         business_id = request.data.get('business_account')
         if not business_id:
             return standard_response(
@@ -701,6 +709,13 @@ class VerificationRequestActionView(APIView):
         
         action = request.data.get('action') # 'accept' or 'reject'
         if action == 'accept':
+            # Option B: Enforce single active verification. 
+            # Remove any previous active verifications for this user.
+            VerificationRequest.objects.filter(
+                user=verification_request.user, 
+                status='accepted'
+            ).exclude(id=verification_request.id).delete()
+
             verification_request.status = 'accepted'
             verification_request.save()
             
@@ -709,7 +724,7 @@ class VerificationRequestActionView(APIView):
             user.is_verified = True
             user.save(update_fields=['is_verified'])
             
-            return standard_response(success=True, message="Verification request accepted. User is now verified.")
+            return standard_response(success=True, message="Verification request accepted. User is now verified. Any previous verifications have been removed.")
         elif action == 'reject':
             verification_request.status = 'rejected'
             verification_request.save()
@@ -788,6 +803,44 @@ class RemoveMemberView(APIView):
             user.save(update_fields=['is_verified'])
 
         return standard_response(success=True, message="Member removed successfully.")
+
+
+class UserLeaveVerificationView(APIView):
+    """
+    Standard user leaves their current business verification
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [MultiModelJWTAuthentication]
+
+    def post(self, request):
+        if not isinstance(request.user, User):
+            return standard_response(
+                success=False, 
+                message="Only standard users can perform this action.", 
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Find the active (accepted) verification for this user
+        try:
+            verification = VerificationRequest.objects.get(user=request.user, status='accepted')
+        except VerificationRequest.DoesNotExist:
+            return standard_response(
+                success=False, 
+                message="No active verification found to leave.", 
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Delete the verification
+        verification.delete()
+        
+        # Update user status
+        request.user.is_verified = False
+        request.user.save(update_fields=['is_verified'])
+        
+        return standard_response(
+            success=True, 
+            message="You have successfully left the business verification."
+        )
 
 
 class OtherBusinessProfileView(APIView):
