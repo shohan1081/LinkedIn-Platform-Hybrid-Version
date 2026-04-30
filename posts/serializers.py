@@ -36,7 +36,7 @@ class BasePostSerializer(serializers.ModelSerializer):
 
     # tags for list input (write_only) - as per LinkedIn style
     tags = serializers.ListField(
-        child=serializers.CharField(),
+        child=serializers.CharField(max_length=50),
         write_only=True,
         required=False
     )
