@@ -292,6 +292,8 @@ class BusinessAccountProfileSerializer(serializers.ModelSerializer):
     website = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     account_type = serializers.SerializerMethodField()
     author_id = serializers.SerializerMethodField()
+    followers_count = serializers.SerializerMethodField()
+    following_count = serializers.SerializerMethodField()
 
     class Meta:
         model = BusinessAccount
@@ -300,11 +302,24 @@ class BusinessAccountProfileSerializer(serializers.ModelSerializer):
             'business_email', 'website', 'headline', 'about', 'profile_picture', 'cover_photo',
             'address', 'address_line_2', 'city', 'state', 'zip_code',
             'is_email_verified', 'is_profile_complete', 'account_type',
+            'followers_count', 'following_count',
             'date_joined', 'last_login', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'author_id', 'email', 'is_email_verified', 'is_profile_complete', 'date_joined', 'last_login', 'updated_at'
+            'id', 'author_id', 'email', 'is_email_verified', 'is_profile_complete', 
+            'followers_count', 'following_count',
+            'date_joined', 'last_login', 'updated_at'
         ]
+
+    def get_followers_count(self, obj):
+        from users.models import Follow
+        ct = ContentType.objects.get_for_model(obj)
+        return Follow.objects.filter(followed_content_type=ct, followed_object_id=obj.id).count()
+
+    def get_following_count(self, obj):
+        from users.models import Follow
+        ct = ContentType.objects.get_for_model(obj)
+        return Follow.objects.filter(follower_content_type=ct, follower_object_id=obj.id).count()
 
     def get_author_id(self, obj):
         return str(obj.id)
@@ -397,14 +412,43 @@ class PublicBusinessProfileSerializer(serializers.ModelSerializer):
     recommendations = serializers.SerializerMethodField()
     posts = serializers.SerializerMethodField()
     verified_members_count = serializers.SerializerMethodField()
+    followers_count = serializers.SerializerMethodField()
+    following_count = serializers.SerializerMethodField()
+    is_following = serializers.SerializerMethodField()
 
     class Meta:
         model = BusinessAccount
         fields = [
             'id', 'business_name', 'headline', 'about', 'industry_category', 
             'website', 'city', 'state', 'profile_picture', 
-            'cover_photo', 'recommendations', 'posts', 'verified_members_count'
+            'cover_photo', 'recommendations', 'posts', 'verified_members_count',
+            'followers_count', 'following_count', 'is_following'
         ]
+
+    def get_followers_count(self, obj):
+        from users.models import Follow
+        ct = ContentType.objects.get_for_model(obj)
+        return Follow.objects.filter(followed_content_type=ct, followed_object_id=obj.id).count()
+
+    def get_following_count(self, obj):
+        from users.models import Follow
+        ct = ContentType.objects.get_for_model(obj)
+        return Follow.objects.filter(follower_content_type=ct, follower_object_id=obj.id).count()
+
+    def get_is_following(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return False
+        from users.models import Follow
+        follower = request.user
+        follower_ct = ContentType.objects.get_for_model(follower)
+        followed_ct = ContentType.objects.get_for_model(obj)
+        return Follow.objects.filter(
+            follower_content_type=follower_ct,
+            follower_object_id=follower.id,
+            followed_content_type=followed_ct,
+            followed_object_id=obj.id
+        ).exists()
 
     def get_verified_members_count(self, obj):
         from .models import VerificationRequest
