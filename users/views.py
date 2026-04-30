@@ -40,6 +40,8 @@ from .serializers import (
     RecommendationSerializer,
     GiveRecommendationSerializer,
     PublicUserProfileSerializer,
+    FollowAccountSerializer,
+    FollowToggleSerializer,
 )
 from .utils import (
     send_welcome_email,
@@ -54,7 +56,8 @@ from .models import (
     ProfileDataDeletionRequest, 
     Education, 
     Experience, 
-    Recommendation
+    Recommendation,
+    Follow
 )
 
 User = get_user_model()
@@ -579,3 +582,103 @@ class UserLogoutView(APIView):
             token.blacklist()
             return standard_response(success=True, message="Logged out")
         except: return standard_response(success=True, message="Logged out")
+
+class FollowToggleView(APIView):
+    """
+    API endpoint to follow or unfollow another user/business.
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [MultiModelJWTAuthentication]
+
+    def post(self, request):
+        serializer = FollowToggleSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+
+        follower = request.user
+        followed = serializer.validated_data['followed_instance']
+        
+        follower_ct = ContentType.objects.get_for_model(follower)
+        followed_ct = ContentType.objects.get_for_model(followed)
+
+        follow_qs = Follow.objects.filter(
+            follower_content_type=follower_ct,
+            follower_object_id=follower.id,
+            followed_content_type=followed_ct,
+            followed_object_id=followed.id
+        )
+
+        if follow_qs.exists():
+            follow_qs.delete()
+            return standard_response(success=True, message=f"You have unfollowed {followed}")
+        else:
+            Follow.objects.create(
+                follower_content_type=follower_ct,
+                follower_object_id=follower.id,
+                followed_content_type=followed_ct,
+                followed_object_id=followed.id
+            )
+            return standard_response(success=True, message=f"You are now following {followed}")
+
+class FollowersListView(APIView):
+    """
+    API endpoint to list all followers of a specific user/business.
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [MultiModelJWTAuthentication]
+
+    def get(self, request, pk):
+        from business_account.models import BusinessAccount
+        
+        # Determine the target account
+        target = None
+        try:
+            target = User.objects.get(pk=pk)
+        except User.DoesNotExist:
+            try:
+                target = BusinessAccount.objects.get(pk=pk)
+            except BusinessAccount.DoesNotExist:
+                return standard_response(success=False, message="Account not found", status_code=status.HTTP_404_NOT_FOUND)
+
+        target_ct = ContentType.objects.get_for_model(target)
+        follows = Follow.objects.filter(followed_content_type=target_ct, followed_object_id=target.id)
+        
+        followers = [f.follower for f in follows]
+        serializer = FollowAccountSerializer(followers, many=True, context={'request': request})
+        
+        return standard_response(
+            success=True,
+            message="Followers retrieved successfully",
+            data=serializer.data
+        )
+
+class FollowingListView(APIView):
+    """
+    API endpoint to list all accounts followed by a specific user/business.
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [MultiModelJWTAuthentication]
+
+    def get(self, request, pk):
+        from business_account.models import BusinessAccount
+        
+        # Determine the target account
+        target = None
+        try:
+            target = User.objects.get(pk=pk)
+        except User.DoesNotExist:
+            try:
+                target = BusinessAccount.objects.get(pk=pk)
+            except BusinessAccount.DoesNotExist:
+                return standard_response(success=False, message="Account not found", status_code=status.HTTP_404_NOT_FOUND)
+
+        target_ct = ContentType.objects.get_for_model(target)
+        follows = Follow.objects.filter(follower_content_type=target_ct, follower_object_id=target.id)
+        
+        followed_accounts = [f.followed for f in follows]
+        serializer = FollowAccountSerializer(followed_accounts, many=True, context={'request': request})
+        
+        return standard_response(
+            success=True,
+            message="Following list retrieved successfully",
+            data=serializer.data
+        )
