@@ -31,6 +31,9 @@ from .views import (
     RecommendationListView,
     GiveRecommendationView,
     OtherUserProfileView,
+    FollowToggleView,
+    FollowersListView,
+    FollowingListView,
 )
 
 app_name = 'users'
@@ -85,4 +88,9 @@ urlpatterns = [
     path('delete-profile-data/', delete_profile_data_request_view, name='delete-profile-data-form'),
     path('delete-profile-data-request/', ProfileDataDeletionAPIView.as_view(), name='delete-profile-data-request'),
     path('verify-profile-data-deletion/<uuid:token>/', VerifyProfileDataDeletionView.as_view(), name='verify_profile_data_deletion'),
+
+    # Follow endpoints
+    path('follow/', FollowToggleView.as_view(), name='follow-toggle'),
+    path('<uuid:pk>/followers/', FollowersListView.as_view(), name='followers-list'),
+    path('<uuid:pk>/following/', FollowingListView.as_view(), name='following-list'),
 ]
