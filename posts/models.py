@@ -116,12 +116,6 @@ class OfferPost(Post):
         ('event', 'Event'),
         ('other', 'Other'),
     ]
-    DELIVERY_TIME_CHOICES = [
-        ('night', 'Night'),
-        ('day', 'Day'),
-        ('7_days', '7 Days'),
-        ('14_days', '14 Days'),
-    ]
 
     category = models.CharField(
         max_length=50,
@@ -135,10 +129,10 @@ class OfferPost(Post):
         help_text=_("e.g., $10-$50, negotiable, etc.")
     )
     delivery_time = models.CharField(
-        max_length=20,
-        choices=DELIVERY_TIME_CHOICES,
+        max_length=100,
         blank=True,
-        null=True
+        null=True,
+        help_text=_("e.g., 3-5 days, immediate, etc.")
     )
 
     class Meta:
