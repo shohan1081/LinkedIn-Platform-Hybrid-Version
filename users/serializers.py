@@ -323,6 +323,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
     is_profile_complete = serializers.BooleanField(read_only=True)
     account_type = serializers.SerializerMethodField()
     verified_by = serializers.SerializerMethodField()
+    followers_count = serializers.SerializerMethodField()
+    following_count = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -352,6 +354,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'is_profile_complete',
             'account_type',
             'verified_by',
+            'followers_count',
+            'following_count',
             'date_joined',
             'last_login',
         ]
@@ -363,9 +367,21 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'is_subscribed',
             'is_verified',
             'is_profile_complete',
+            'followers_count',
+            'following_count',
             'date_joined',
             'last_login',
         ]
+
+    def get_followers_count(self, obj):
+        from .models import Follow
+        ct = ContentType.objects.get_for_model(obj)
+        return Follow.objects.filter(followed_content_type=ct, followed_object_id=obj.id).count()
+
+    def get_following_count(self, obj):
+        from .models import Follow
+        ct = ContentType.objects.get_for_model(obj)
+        return Follow.objects.filter(follower_content_type=ct, follower_object_id=obj.id).count()
 
     def get_verified_by(self, obj):
         from business_account.models import VerificationRequest
@@ -696,14 +712,45 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
     posts = serializers.SerializerMethodField()
     full_name = serializers.SerializerMethodField()
     verified_by = serializers.SerializerMethodField()
+    followers_count = serializers.SerializerMethodField()
+    following_count = serializers.SerializerMethodField()
+    is_following = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             'id', 'full_name', 'first_name', 'last_name', 'headline', 'about', 
             'profile_picture', 'cover_photo', 'occupation', 'country', 'city', 
-            'is_verified', 'verified_by', 'education', 'experience', 'recommendations', 'posts'
+            'is_verified', 'verified_by', 'education', 'experience', 'recommendations', 
+            'posts', 'followers_count', 'following_count', 'is_following'
         ]
+
+    def get_followers_count(self, obj):
+        from .models import Follow
+        ct = ContentType.objects.get_for_model(obj)
+        return Follow.objects.filter(followed_content_type=ct, followed_object_id=obj.id).count()
+
+    def get_following_count(self, obj):
+        from .models import Follow
+        ct = ContentType.objects.get_for_model(obj)
+        return Follow.objects.filter(follower_content_type=ct, follower_object_id=obj.id).count()
+
+    def get_is_following(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return False
+        
+        from .models import Follow
+        follower = request.user
+        follower_ct = ContentType.objects.get_for_model(follower)
+        followed_ct = ContentType.objects.get_for_model(obj)
+        
+        return Follow.objects.filter(
+            follower_content_type=follower_ct,
+            follower_object_id=follower.id,
+            followed_content_type=followed_ct,
+            followed_object_id=obj.id
+        ).exists()
 
     def get_verified_by(self, obj):
         from business_account.models import VerificationRequest
@@ -792,3 +839,90 @@ class GiveRecommendationSerializer(serializers.ModelSerializer):
             defaults={'message': message}
         )
         return recommendation
+
+class FollowAccountSerializer(serializers.Serializer):
+    """
+    Serializer to represent a followed or follower account.
+    """
+    id = serializers.UUIDField()
+    type = serializers.SerializerMethodField()
+    name = serializers.SerializerMethodField()
+    profile_image = serializers.SerializerMethodField()
+    headline = serializers.SerializerMethodField()
+    is_following = serializers.SerializerMethodField()
+
+    def get_type(self, obj):
+        from .models import User
+        return 'user' if isinstance(obj, User) else 'business_account'
+
+    def get_name(self, obj):
+        from .models import User
+        if isinstance(obj, User):
+            return f"{obj.first_name} {obj.last_name}".strip() or obj.email
+        return getattr(obj, 'business_name', obj.email)
+
+    def get_profile_image(self, obj):
+        request = self.context.get('request')
+        img = None
+        from .models import User
+        if isinstance(obj, User):
+            img = obj.profile_picture
+        else:
+            img = getattr(obj, 'profile_picture', None) or getattr(obj, 'cover_photo', None)
+        
+        if img:
+            return request.build_absolute_uri(img.url) if request else img.url
+        return None
+
+    def get_headline(self, obj):
+        return getattr(obj, 'headline', None)
+
+    def get_is_following(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return False
+        
+        from .models import Follow
+        follower = request.user
+        follower_ct = ContentType.objects.get_for_model(follower)
+        followed_ct = ContentType.objects.get_for_model(obj)
+        
+        return Follow.objects.filter(
+            follower_content_type=follower_ct,
+            follower_object_id=follower.id,
+            followed_content_type=followed_ct,
+            followed_object_id=obj.id
+        ).exists()
+
+class FollowToggleSerializer(serializers.Serializer):
+    """
+    Serializer to handle follow/unfollow toggle.
+    """
+    followed_id = serializers.UUIDField()
+    followed_type = serializers.ChoiceField(choices=['user', 'business_account'])
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        followed_id = attrs['followed_id']
+        followed_type = attrs['followed_type']
+
+        # Prevent self-following
+        if str(followed_id) == str(request.user.id):
+            raise serializers.ValidationError("You cannot follow yourself.")
+
+        # Find the followed model
+        from .models import User
+        from business_account.models import BusinessAccount
+        
+        if followed_type == 'user':
+            model = User
+        else:
+            model = BusinessAccount
+
+        try:
+            followed = model.objects.get(id=followed_id)
+            attrs['followed_instance'] = followed
+        except model.DoesNotExist:
+            raise serializers.ValidationError(f"The {followed_type} with ID {followed_id} does not exist.")
+
+        return attrs
