@@ -428,3 +428,33 @@ class Recommendation(models.Model):
 
     def __str__(self):
         return f"Recommendation from {self.giver} to {self.receiver}"
+
+class Follow(models.Model):
+    """
+    Polymorphic follow system between all account types (User, BusinessAccount).
+    """
+    # The person who is following
+    follower_content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, related_name='following_ct')
+    follower_object_id = models.UUIDField()
+    follower = GenericForeignKey('follower_content_type', 'follower_object_id')
+
+    # The person being followed
+    followed_content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, related_name='followers_ct')
+    followed_object_id = models.UUIDField()
+    followed = GenericForeignKey('followed_content_type', 'followed_object_id')
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = _('follow')
+        verbose_name_plural = _('follows')
+        ordering = ['-created_at']
+        # Prevent following the same person twice
+        unique_together = ('follower_content_type', 'follower_object_id', 'followed_content_type', 'followed_object_id')
+        indexes = [
+            models.Index(fields=['follower_content_type', 'follower_object_id']),
+            models.Index(fields=['followed_content_type', 'followed_object_id']),
+        ]
+
+    def __str__(self):
+        return f"{self.follower} follows {self.followed}"
