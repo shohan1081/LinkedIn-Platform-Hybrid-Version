@@ -132,13 +132,14 @@ class NeedPostRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
             data=serializer.data
         )
 
+    
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         self.perform_destroy(instance)
         return standard_response(
             success=True,
             message="Need post deleted successfully",
-            status_code=status.HTTP_204_NO_CONTENT
+            status_code=status.HTTP_200_OK
         )
 
 # Offer Post Views
