@@ -1,3 +1,4 @@
+import random
 from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -61,11 +62,16 @@ class NeedPostListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = super().get_queryset().order_by('-created_at')
         tag_name = self.request.query_params.get('tag')
         if tag_name:
             queryset = queryset.filter(tags__name=tag_name.lower())
-        return queryset
+        
+        posts = list(queryset)
+        recent_posts = posts[:10]
+        older_posts = posts[10:]
+        random.shuffle(older_posts)
+        return recent_posts + older_posts
 
     def perform_create(self, serializer):
         user = self.request.user
@@ -150,11 +156,16 @@ class OfferPostListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = super().get_queryset().order_by('-created_at')
         tag_name = self.request.query_params.get('tag')
         if tag_name:
             queryset = queryset.filter(tags__name=tag_name.lower())
-        return queryset
+        
+        posts = list(queryset)
+        recent_posts = posts[:10]
+        older_posts = posts[10:]
+        random.shuffle(older_posts)
+        return recent_posts + older_posts
 
     def perform_create(self, serializer):
         user = self.request.user
@@ -259,12 +270,18 @@ class UserAndBusinessPostsListView(generics.ListAPIView):
             offer_posts_qs = offer_posts_qs.filter(tags__name=tag_name.lower())
         
         # Combine and order by created_at
-        queryset = sorted(
+        all_posts = sorted(
             list(need_posts_qs) + list(offer_posts_qs),
             key=lambda post: post.created_at,
             reverse=True
         )
-        return queryset
+
+        # Logic: 10 recent posts first, then shuffle the rest
+        recent_posts = all_posts[:10]
+        older_posts = all_posts[10:]
+        random.shuffle(older_posts)
+        
+        return recent_posts + older_posts
     
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
