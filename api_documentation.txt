@@ -169,7 +169,7 @@ Images should be uploaded using `multipart/form-data`.
 - **Request Body (`POST` - multipart/form-data):**
   - `title`: "Need a UI Designer"
   - `description`: "Looking for an expert UI designer for a 3-month project."
-  - `category`: "design" (one of: `technology`, `logistic`, `marketing`, `legal`, `suply_chain`, `finance`, `design`, `other`)
+  - `category`: "Design" (one of: `Technology`, `Logistic`, `Marketing`, `Legal`, `Suply Chain`, `Finance`, `Design`, `Other`)
   - `tags`: ["UIUX", "Figma"] (multiple fields or JSON array)
   - `images`: (file)
   - `images_caption`: "Mockup draft"
