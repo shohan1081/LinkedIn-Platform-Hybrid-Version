@@ -10,7 +10,7 @@ from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from django.utils import timezone
 from django.contrib.auth import get_user_model # To access User model for example in CustomTokenRefreshView
 
-from .models import BusinessAccount, VerificationRequest
+from .models import BusinessAccount, VerificationRequest, BusinessVerification
 from .serializers import (
     BusinessAccountRegistrationSerializer,
     BusinessAccountLoginSerializer,
@@ -26,6 +26,7 @@ from .serializers import (
     UserSimpleSerializer,
     PublicBusinessProfileSerializer,
     SimpleBusinessAccountSerializer,
+    BusinessVerificationSerializer,
 )
 from users.utils import (
     generate_otp,
@@ -913,3 +914,75 @@ class PublicBusinessMemberListView(APIView):
             message=f"Verified members for {business.business_name or business.email} retrieved successfully.",
             data=serializer.data
         )
+
+
+class BusinessVerificationSubmitView(APIView):
+    """
+    Business account submits a verification document
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [BusinessAccountAuthentication]
+    serializer_class = BusinessVerificationSerializer
+
+    def post(self, request):
+        if not isinstance(request.user, BusinessAccount):
+             return standard_response(
+                 success=False, 
+                 message="Only business accounts can submit verification documents.", 
+                 status_code=status.HTTP_403_FORBIDDEN
+             )
+        
+        # Check if they already have a verification request
+        if BusinessVerification.objects.filter(business_account=request.user).exists():
+            verification = BusinessVerification.objects.get(business_account=request.user)
+            if verification.status == 'verified':
+                return standard_response(success=False, message="Your account is already verified.", status_code=status.HTTP_400_BAD_REQUEST)
+            elif verification.status == 'pending':
+                return standard_response(success=False, message="You already have a pending verification request.", status_code=status.HTTP_400_BAD_REQUEST)
+            
+            # If rejected or on hold, they can update/re-submit
+            serializer = self.serializer_class(verification, data=request.data, context={'request': request})
+        else:
+            serializer = self.serializer_class(data=request.data, context={'request': request})
+            
+        if serializer.is_valid():
+            serializer.save()
+            return standard_response(
+                success=True,
+                message="Verification document submitted successfully. Admin will review it shortly.",
+                data=serializer.data,
+                status_code=status.HTTP_201_CREATED
+            )
+        return standard_response(success=False, message="Submission failed", errors=serializer.errors, status_code=status.HTTP_400_BAD_REQUEST)
+
+
+class BusinessVerificationStatusView(APIView):
+    """
+    Check the status of the business verification request
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [BusinessAccountAuthentication]
+    serializer_class = BusinessVerificationSerializer
+
+    def get(self, request):
+        if not isinstance(request.user, BusinessAccount):
+             return standard_response(
+                 success=False, 
+                 message="Only business accounts can access this.", 
+                 status_code=status.HTTP_403_FORBIDDEN
+             )
+        
+        try:
+            verification = BusinessVerification.objects.get(business_account=request.user)
+            serializer = self.serializer_class(verification, context={'request': request})
+            return standard_response(
+                success=True,
+                message="Verification status retrieved successfully.",
+                data=serializer.data
+            )
+        except BusinessVerification.DoesNotExist:
+            return standard_response(
+                success=True,
+                message="No verification request found.",
+                data=None
+            )
