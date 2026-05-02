@@ -54,11 +54,13 @@ class ConversationSerializer(serializers.ModelSerializer):
     other_participant = serializers.SerializerMethodField()
     last_message = serializers.SerializerMethodField()
     post_title = serializers.SerializerMethodField()
+    post_id = serializers.SerializerMethodField()
+    post_type = serializers.SerializerMethodField()
     unread_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Conversation
-        fields = ['id', 'status', 'post_title', 'other_participant', 'last_message', 'unread_count', 'updated_at']
+        fields = ['id', 'status', 'post_title', 'post_id', 'post_type', 'other_participant', 'last_message', 'unread_count', 'updated_at']
 
     def get_unread_count(self, obj):
         request = self.context.get('request')
@@ -122,3 +124,14 @@ class ConversationSerializer(serializers.ModelSerializer):
 
     def get_post_title(self, obj):
         return obj.post.title if obj.post else "General Inquiry"
+
+    def get_post_id(self, obj):
+        return str(obj.post_object_id) if obj.post_object_id else None
+
+    def get_post_type(self, obj):
+        if not obj.post_content_type:
+            return None
+        from posts.models import NeedPost
+        if obj.post_content_type == ContentType.objects.get_for_model(NeedPost):
+            return 'need'
+        return 'offer'
