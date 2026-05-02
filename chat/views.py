@@ -40,6 +40,35 @@ class ConversationListView(generics.ListAPIView):
             data=serializer.data
         )
 
+
+class DealsConversationListView(generics.ListAPIView):
+    """
+    Filter and list conversations that are linked to a specific post (deals).
+    """
+    serializer_class = ConversationSerializer
+    authentication_classes = [MultiModelJWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        user_ct = ContentType.objects.get_for_model(user)
+        
+        # Filter where user is participant AND there is a linked post
+        return Conversation.objects.filter(
+            (Q(part1_content_type=user_ct, part1_object_id=user.id) |
+             Q(part2_content_type=user_ct, part2_object_id=user.id)),
+            post_object_id__isnull=False
+        ).order_by('-updated_at')
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return standard_response(
+            success=True,
+            message="Deal conversations retrieved successfully",
+            data=serializer.data
+        )
+
 class ConversationStartView(APIView):
     """
     Start a direct conversation with another user or business.
