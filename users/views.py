@@ -59,6 +59,7 @@ from .models import (
     Recommendation,
     Follow
 )
+from notifications.services import create_notification
 
 User = get_user_model()
 
@@ -615,12 +616,28 @@ class FollowToggleView(APIView):
             follow_qs.delete()
             return standard_response(success=True, message=f"You have unfollowed {followed}")
         else:
-            Follow.objects.create(
+            follow_obj = Follow.objects.create(
                 follower_content_type=follower_ct,
                 follower_object_id=follower.id,
                 followed_content_type=followed_ct,
                 followed_object_id=followed.id
             )
+
+            # Send notification to the person being followed
+            sender_name = "Someone"
+            if hasattr(follower, 'first_name'):
+                sender_name = f"{follower.first_name} {follower.last_name}".strip() or follower.email
+            else:
+                sender_name = getattr(follower, 'business_name', follower.email)
+
+            create_notification(
+                recipient=followed,
+                title="New Follower",
+                message=f"{sender_name} started following you.",
+                notification_type='new_follow',
+                target=follow_obj
+            )
+
             return standard_response(success=True, message=f"You are now following {followed}")
 
 class FollowersListView(APIView):
