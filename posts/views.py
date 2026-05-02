@@ -19,8 +19,9 @@ from .serializers import (
     OfferPostProposalSerializer,
 )
 from chat.models import Conversation, Message
-from users.models import User
+from users.models import User, Follow
 from business_account.models import BusinessAccount
+from notifications.services import create_notification
 
 # Helper for standardizing API responses
 def standard_response(success=True, message="", data=None, errors=None, status_code=status.HTTP_200_OK, headers=None):
@@ -77,10 +78,31 @@ class NeedPostListCreateView(generics.ListCreateAPIView):
         user = self.request.user
         author_content_type = ContentType.objects.get_for_model(user)
         
-        serializer.save(
+        post = serializer.save(
             author_content_type=author_content_type,
             author_object_id=user.id
         )
+
+        # Notify followers
+        followers_qs = Follow.objects.filter(
+            followed_content_type=author_content_type,
+            followed_object_id=user.id
+        )
+
+        sender_name = "Someone"
+        if hasattr(user, 'first_name'):
+            sender_name = f"{user.first_name} {user.last_name}".strip() or user.email
+        else:
+            sender_name = getattr(user, 'business_name', user.email)
+
+        for follow in followers_qs:
+            create_notification(
+                recipient=follow.follower,
+                title="New Post Activity",
+                message=f"{sender_name} created a new need post: {post.title}",
+                notification_type='new_post',
+                target=post
+            )
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
@@ -176,10 +198,31 @@ class OfferPostListCreateView(generics.ListCreateAPIView):
         else:
             raise ValueError("Authenticated user is neither a User nor a BusinessAccount.")
         
-        serializer.save(
+        post = serializer.save(
             author_content_type=author_content_type,
             author_object_id=user.id
         )
+
+        # Notify followers
+        followers_qs = Follow.objects.filter(
+            followed_content_type=author_content_type,
+            followed_object_id=user.id
+        )
+
+        sender_name = "Someone"
+        if hasattr(user, 'first_name'):
+            sender_name = f"{user.first_name} {user.last_name}".strip() or user.email
+        else:
+            sender_name = getattr(user, 'business_name', user.email)
+
+        for follow in followers_qs:
+            create_notification(
+                recipient=follow.follower,
+                title="New Post Activity",
+                message=f"{sender_name} created a new offer post: {post.title}",
+                notification_type='new_post',
+                target=post
+            )
     
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
