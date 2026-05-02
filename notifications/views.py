@@ -148,3 +148,33 @@ class MarkNotificationReadView(APIView):
                 status_code=status.HTTP_404_NOT_FOUND,
             )
 
+
+class NotificationDeleteView(APIView):
+    """
+    Delete a specific notification.
+    """
+
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [MultiModelJWTAuthentication]
+
+    def delete(self, request, pk):
+        recipient_ct = ContentType.objects.get_for_model(request.user)
+
+        try:
+            notification = Notification.objects.get(
+                pk=pk,
+                recipient_content_type=recipient_ct,
+                recipient_object_id=request.user.id,
+            )
+            notification.delete()
+            return standard_response(
+                success=True,
+                message="Notification deleted successfully",
+            )
+        except Notification.DoesNotExist:
+            return standard_response(
+                success=False,
+                message="Notification not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+
