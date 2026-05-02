@@ -15,6 +15,7 @@ class Notification(models.Model):
         ('verification_request', 'New Verification Request'),
         ('verification_update', 'Verification Status Update'),
         ('post_proposal', 'New Post Proposal'),
+        ('new_follow', 'New Follower'),
         ('system_alert', 'System Alert'),
     ]
 
