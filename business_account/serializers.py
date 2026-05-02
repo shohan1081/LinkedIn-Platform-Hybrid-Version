@@ -9,7 +9,7 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password as django_validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 
-from .models import BusinessAccount, VerificationRequest
+from .models import BusinessAccount, VerificationRequest, BusinessVerification
 from users.models import User
 from .validators import (
     validate_password_strength,
@@ -301,12 +301,12 @@ class BusinessAccountProfileSerializer(serializers.ModelSerializer):
             'id', 'author_id', 'email', 'role_position', 'business_name', 'industry_category',
             'business_email', 'website', 'headline', 'about', 'profile_picture', 'cover_photo',
             'address', 'address_line_2', 'city', 'state', 'zip_code',
-            'is_email_verified', 'is_profile_complete', 'account_type',
+            'is_email_verified', 'is_profile_complete', 'is_verified', 'account_type',
             'followers_count', 'following_count',
             'date_joined', 'last_login', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'author_id', 'email', 'is_email_verified', 'is_profile_complete', 
+            'id', 'author_id', 'email', 'is_email_verified', 'is_profile_complete', 'is_verified',
             'followers_count', 'following_count',
             'date_joined', 'last_login', 'updated_at'
         ]
@@ -422,7 +422,7 @@ class PublicBusinessProfileSerializer(serializers.ModelSerializer):
             'id', 'business_name', 'headline', 'about', 'industry_category', 
             'website', 'city', 'state', 'profile_picture', 
             'cover_photo', 'recommendations', 'posts', 'verified_members_count',
-            'followers_count', 'following_count', 'is_following'
+            'followers_count', 'following_count', 'is_following', 'is_verified'
         ]
 
     def get_followers_count(self, obj):
@@ -499,3 +499,18 @@ class SimpleBusinessAccountSerializer(serializers.ModelSerializer):
         if request and instance.profile_picture:
             representation['profile_picture'] = request.build_absolute_uri(instance.profile_picture.url)
         return representation
+
+
+class BusinessVerificationSerializer(serializers.ModelSerializer):
+    """
+    Serializer for BusinessVerification model
+    """
+    class Meta:
+        model = BusinessVerification
+        fields = ['id', 'business_account', 'document', 'status', 'admin_notes', 'submitted_at', 'updated_at']
+        read_only_fields = ['id', 'business_account', 'status', 'admin_notes', 'submitted_at', 'updated_at']
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        validated_data['business_account'] = request.user
+        return super().create(validated_data)
