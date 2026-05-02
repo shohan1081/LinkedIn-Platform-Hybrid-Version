@@ -142,30 +142,33 @@ class GiveRecommendationView(APIView):
 
 class GlobalUserSearchView(APIView):
     permission_classes = [IsAuthenticated]
-    authentication_classes = [JWTAuthentication]
+    authentication_classes = [MultiModelJWTAuthentication]
 
     def get(self, request):
-        query = request.query_params.get('q', '')
+        query = request.query_params.get('q', '').strip()
         if not query:
             return standard_response(success=True, data={'users': [], 'businesses': []})
 
         users = User.objects.filter(
             DjangoQ(first_name__icontains=query) | 
             DjangoQ(last_name__icontains=query) | 
-            DjangoQ(email__icontains=query)
-        ).filter(is_active=True)[:10]
+            DjangoQ(email__icontains=query) |
+            DjangoQ(headline__icontains=query)
+        ).filter(is_active=True).distinct()[:15]
 
         from business_account.models import BusinessAccount
         businesses = BusinessAccount.objects.filter(
             DjangoQ(business_name__icontains=query) | 
-            DjangoQ(email__icontains=query)
-        ).filter(is_active=True)[:10]
+            DjangoQ(email__icontains=query) |
+            DjangoQ(headline__icontains=query)
+        ).filter(is_active=True).distinct()[:15]
 
         user_results = []
         for u in users:
             user_results.append({
                 'id': str(u.id),
                 'name': f"{u.first_name} {u.last_name}".strip() or u.email,
+                'headline': u.headline,
                 'type': 'user',
                 'profile_picture': get_full_media_url(request, u.profile_picture)
             })
@@ -175,13 +178,14 @@ class GlobalUserSearchView(APIView):
             business_results.append({
                 'id': str(b.id),
                 'name': b.business_name or b.email,
+                'headline': b.headline,
                 'type': 'business',
                 'profile_picture': get_full_media_url(request, b.profile_picture)
             })
 
         return standard_response(
             success=True,
-            message="Search results retrieved",
+            message=f"Found {len(user_results)} users and {len(business_results)} businesses",
             data={'users': user_results, 'businesses': business_results}
         )
 
