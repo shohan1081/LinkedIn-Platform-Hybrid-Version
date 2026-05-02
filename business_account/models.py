@@ -64,6 +64,12 @@ class BusinessAccount(AbstractBaseUser, PermissionsMixin):
         default=False,
         help_text=_("Designates whether the business account has completed their profile registration")
     )
+
+    is_verified = models.BooleanField(
+        _('verified'),
+        default=False,
+        help_text=_("Designates whether the business account has been verified by the admin")
+    )
     
     headline = models.CharField(
         _('headline'),
@@ -188,3 +194,52 @@ class VerificationRequest(models.Model):
 
     def __str__(self):
         return f"{self.user.email} -> {self.business_account.business_name or self.business_account.email}"
+
+
+class BusinessVerification(models.Model):
+    """
+    Model for Business Account verification documents submitted to Admin
+    """
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('verified', 'Verified'),
+        ('rejected', 'Rejected'),
+        ('hold', 'Hold'),
+    ]
+
+    business_account = models.OneToOneField(
+        BusinessAccount,
+        on_delete=models.CASCADE,
+        related_name='verification_document',
+        help_text=_("The business account requesting verification")
+    )
+    document = models.FileField(
+        upload_to='business_verification_docs/',
+        help_text=_("Verification document (PDF, Image, etc.)")
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending',
+        help_text=_("Status of the verification request")
+    )
+    admin_notes = models.TextField(blank=True, null=True, help_text=_("Notes from the admin"))
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _('business verification')
+        verbose_name_plural = _('business verifications')
+        ordering = ['-submitted_at']
+
+    def __str__(self):
+        return f"Verification for {self.business_account.business_name or self.business_account.email}"
+
+    def save(self, *args, **kwargs):
+        # Automatically update the BusinessAccount's is_verified status
+        if self.status == 'verified':
+            self.business_account.is_verified = True
+        else:
+            self.business_account.is_verified = False
+        self.business_account.save(update_fields=['is_verified'])
+        super().save(*args, **kwargs)
