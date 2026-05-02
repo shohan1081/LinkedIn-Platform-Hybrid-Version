@@ -3,6 +3,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.contenttypes.models import ContentType
 from .models import Conversation, Message
+from notifications.services import create_notification
 
 class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
@@ -115,9 +116,34 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Update conversation timestamp
         conv.save() 
 
-        return Message.objects.create(
+        message = Message.objects.create(
             conversation=conv,
             sender_content_type=user_ct,
             sender_object_id=self.user.id,
             text=text
         )
+
+        # Determine recipient
+        recipient = None
+        if str(conv.part1_object_id) == str(self.user.id):
+            recipient = conv.participant2
+        else:
+            recipient = conv.participant1
+
+        # Create notification for recipient
+        if recipient:
+            sender_name = "Someone"
+            if hasattr(self.user, 'first_name'):
+                sender_name = f"{self.user.first_name} {self.user.last_name}".strip() or self.user.email
+            else:
+                sender_name = getattr(self.user, 'business_name', self.user.email)
+
+            create_notification(
+                recipient=recipient,
+                title=f"New message from {sender_name}",
+                message=text[:100] + ("..." if len(text) > 100 else ""),
+                notification_type='chat_message',
+                target=message
+            )
+
+        return message
