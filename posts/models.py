@@ -55,14 +55,14 @@ class Post(models.Model):
 
 class NeedPost(Post):
     CATEGORY_CHOICES = [
-        ('technology', 'Technology'),
-        ('logistic', 'Logistic'),
-        ('marketing', 'Marketing'),
-        ('legal', 'Legal'),
-        ('suply_chain', 'Suply Chain'),
-        ('finance', 'Finance'),
-        ('design', 'Design'),
-        ('other', 'Other'),
+        ('Technology', 'Technology'),
+        ('Logistic', 'Logistic'),
+        ('Marketing', 'Marketing'),
+        ('Legal', 'Legal'),
+        ('Suply Chain', 'Suply Chain'),
+        ('Finance', 'Finance'),
+        ('Design', 'Design'),
+        ('Other', 'Other'),
     ]
 
     category = models.CharField(
@@ -111,16 +111,20 @@ class NeedPostProposal(models.Model):
 
 class OfferPost(Post):
     CATEGORY_CHOICES = [
-        ('service', 'Service'),
-        ('product', 'Product'),
-        ('event', 'Event'),
-        ('other', 'Other'),
+        ('Technology', 'Technology'),
+        ('Logistic', 'Logistic'),
+        ('Marketing', 'Marketing'),
+        ('Legal', 'Legal'),
+        ('Suply Chain', 'Suply Chain'),
+        ('Finance', 'Finance'),
+        ('Design', 'Design'),
+        ('Other', 'Other'),
     ]
 
     category = models.CharField(
         max_length=50,
         choices=CATEGORY_CHOICES,
-        default='service'
+        default='Other'
     )
     price_range = models.CharField(
         max_length=100,
