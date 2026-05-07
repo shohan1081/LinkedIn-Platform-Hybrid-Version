@@ -5,6 +5,7 @@ from django.utils.translation import gettext_lazy as _
 import uuid
 
 from .managers import BusinessAccountManager
+from .validators import validate_is_business_email
 
 
 class BusinessAccount(AbstractBaseUser, PermissionsMixin):
@@ -25,6 +26,7 @@ class BusinessAccount(AbstractBaseUser, PermissionsMixin):
         unique=True,
         max_length=255,
         db_index=True,
+        validators=[validate_is_business_email],
         help_text=_("Business account's email address (used for login)")
     )
 
