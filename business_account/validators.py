@@ -54,6 +54,21 @@ def validate_password_match(password, confirm_password):
         raise ValidationError("Passwords do not match.")
 
 
+def validate_is_business_email(email):
+    """
+    Validates that the email does not belong to a common public provider.
+    """
+    public_domains = [
+        'gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'icloud.com',
+        'aol.com', 'zoho.com', 'mail.com', 'protonmail.com', 'yandex.com',
+        'gmx.com', 'mail.ru', 'live.com', 'msn.com', 'me.com',
+    ]
+    
+    domain = email.split('@')[-1].lower()
+    if domain in public_domains:
+        raise ValidationError("Only business email addresses are allowed for business accounts. Please use your professional email.")
+
+
 def validate_profile_picture(image):
     """
     Validates profile picture size and format.
