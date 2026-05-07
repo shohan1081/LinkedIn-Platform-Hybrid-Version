@@ -15,6 +15,7 @@ from .validators import (
     validate_password_strength,
     validate_email_format,
     validate_password_match,
+    validate_is_business_email,
 )
 from .utils import generate_otp, send_otp_email
 from users.exceptions import InvalidCredentialsException
@@ -81,8 +82,9 @@ class BusinessAccountRegistrationSerializer(serializers.ModelSerializer):
     def validate_email(self, value):
         try:
             validate_email_format(value)
+            validate_is_business_email(value)
         except DjangoValidationError as e:
-            raise serializers.ValidationError(str(e))
+            raise serializers.ValidationError(e.messages)
         
         if BusinessAccount.objects.filter(email=value.lower()).exists():
             raise serializers.ValidationError("An account with this email already exists.")
@@ -145,6 +147,11 @@ class BusinessAccountLoginSerializer(serializers.Serializer):
         
         if email and password:
             try:
+                validate_is_business_email(email)
+            except DjangoValidationError as e:
+                raise serializers.ValidationError(e.messages)
+
+            try:
                 business_account = BusinessAccount.objects.get(email=email)
             except BusinessAccount.DoesNotExist:
                 raise InvalidCredentialsException("Invalid email or password")
@@ -189,6 +196,11 @@ class PasswordResetRequestSerializer(serializers.Serializer):
     
     def validate_email(self, value):
         value = value.lower()
+        try:
+            validate_is_business_email(value)
+        except DjangoValidationError as e:
+            raise serializers.ValidationError(e.messages)
+            
         if not BusinessAccount.objects.filter(email=value).exists():
             pass # For security, don't reveal if email exists or not
         return value
