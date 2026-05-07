@@ -5,7 +5,7 @@ from django.utils.translation import gettext_lazy as _
 import uuid
 
 from .managers import BusinessAccountManager
-from .validators import validate_is_business_email
+from .validators import validate_is_business_email, validate_verification_document
 
 
 class BusinessAccount(AbstractBaseUser, PermissionsMixin):
@@ -217,6 +217,7 @@ class BusinessVerification(models.Model):
     )
     document = models.FileField(
         upload_to='business_verification_docs/',
+        validators=[validate_verification_document],
         help_text=_("Verification document (PDF, Image, etc.)")
     )
     status = models.CharField(
