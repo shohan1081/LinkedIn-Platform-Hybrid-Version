@@ -77,6 +77,24 @@ def validate_profile_picture(image):
     if image.size > max_size_mb * 1024 * 1024:
         raise ValidationError(f"Profile picture cannot be larger than {max_size_mb}MB.")
     
-    allowed_formats = ['jpeg', 'png', 'gif']
+    allowed_formats = ['jpeg', 'png', 'gif', 'jpg']
     if not image.name.split('.')[-1].lower() in allowed_formats:
         raise ValidationError("Invalid image format. Only JPEG, PNG, GIF are allowed.")
+
+
+def validate_verification_document(file):
+    """
+    Validates business verification document format (PDF, DOCX, PNG, JPG).
+    """
+    allowed_extensions = ['pdf', 'docx', 'png', 'jpg', 'jpeg']
+    extension = file.name.split('.')[-1].lower()
+    
+    if extension not in allowed_extensions:
+        raise ValidationError(
+            f"Unsupported file format. Allowed formats are: {', '.join(allowed_extensions).upper()}"
+        )
+    
+    # Optional: Max size for verification documents (e.g., 5MB)
+    max_size_mb = 5
+    if file.size > max_size_mb * 1024 * 1024:
+        raise ValidationError(f"Document cannot be larger than {max_size_mb}MB.")
