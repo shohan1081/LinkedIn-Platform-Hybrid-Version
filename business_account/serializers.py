@@ -16,6 +16,7 @@ from .validators import (
     validate_email_format,
     validate_password_match,
     validate_is_business_email,
+    validate_verification_document,
 )
 from .utils import generate_otp, send_otp_email
 from users.exceptions import InvalidCredentialsException
@@ -521,6 +522,13 @@ class BusinessVerificationSerializer(serializers.ModelSerializer):
         model = BusinessVerification
         fields = ['id', 'business_account', 'document', 'status', 'admin_notes', 'submitted_at', 'updated_at']
         read_only_fields = ['id', 'business_account', 'status', 'admin_notes', 'submitted_at', 'updated_at']
+
+    def validate_document(self, value):
+        try:
+            validate_verification_document(value)
+        except DjangoValidationError as e:
+            raise serializers.ValidationError(e.messages)
+        return value
 
     def create(self, validated_data):
         request = self.context.get('request')
