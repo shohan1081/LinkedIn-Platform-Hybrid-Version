@@ -25,8 +25,6 @@ from config import temp_views # Add this import
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/users/', include('users.urls')),
-    # Legal pages
-    path('legal/', include('legal_pages.urls')),
     # Business account
     path('api/business-account/', include('business_account.urls')),
     # Posts app
@@ -37,6 +35,9 @@ urlpatterns = [
     path('api/notifications/', include('notifications.urls')),
     # Temporary test upload endpoint
     path('api/test-upload/', temp_views.TestFileUploadView.as_view(), name='test-file-upload'),
+
+    # Privacy Policy and Terms at the root
+    path('', include('legal_pages.urls')),
 ]
 
 if settings.DEBUG:
