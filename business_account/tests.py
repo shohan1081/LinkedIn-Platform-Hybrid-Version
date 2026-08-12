@@ -42,3 +42,43 @@ class BusinessEmailRestrictionTest(TestCase):
         self.assertFalse(serializer.is_valid())
         self.assertIn('non_field_errors', serializer.errors)
         self.assertEqual(serializer.errors['non_field_errors'][0], "Only business email addresses are allowed for business accounts. Please use your professional email.")
+
+
+class CustomBusinessCategoryTest(TestCase):
+    def test_standard_category_selection(self):
+        from .serializers import BusinessAccountProfileRegistrationSerializer
+        data = {
+            'role_position': 'CEO',
+            'business_name': 'Example Corp',
+            'industry_category': 'Technology & Software',
+            'business_email': 'contact@examplecorp.com'
+        }
+        serializer = BusinessAccountProfileRegistrationSerializer(data=data)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(serializer.validated_data['industry_category'], 'Technology & Software')
+
+    def test_custom_category_selection_success(self):
+        from .serializers import BusinessAccountProfileRegistrationSerializer
+        data = {
+            'role_position': 'Founder',
+            'business_name': 'Quantum Space Tech',
+            'industry_category': 'Other (Specify custom)',
+            'custom_industry_category': 'Satellite & Aerospace Engineering',
+            'business_email': 'contact@quantumspace.com'
+        }
+        serializer = BusinessAccountProfileRegistrationSerializer(data=data)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(serializer.validated_data['industry_category'], 'Satellite & Aerospace Engineering')
+
+    def test_custom_category_missing_error(self):
+        from .serializers import BusinessAccountProfileRegistrationSerializer
+        data = {
+            'role_position': 'Founder',
+            'business_name': 'Quantum Space Tech',
+            'industry_category': 'Other (Specify custom)',
+            'business_email': 'contact@quantumspace.com'
+        }
+        serializer = BusinessAccountProfileRegistrationSerializer(data=data)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('custom_industry_category', serializer.errors)
+
