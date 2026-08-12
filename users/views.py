@@ -42,6 +42,10 @@ from .serializers import (
     PublicUserProfileSerializer,
     FollowAccountSerializer,
     FollowToggleSerializer,
+    UserBlockToggleSerializer,
+    UserBlockAccountSerializer,
+    UserReportSerializer,
+    ProfileShareSerializer,
 )
 from .utils import (
     send_welcome_email,
@@ -57,8 +61,11 @@ from .models import (
     Education, 
     Experience, 
     Recommendation,
-    Follow
+    Follow,
+    UserBlock,
+    UserReport
 )
+
 from notifications.services import create_notification
 
 User = get_user_model()
@@ -155,16 +162,44 @@ class GlobalUserSearchView(APIView):
             DjangoQ(last_name__icontains=query) | 
             DjangoQ(email__icontains=query) |
             DjangoQ(headline__icontains=query)
-        ).filter(is_active=True).distinct()[:15]
+        ).filter(is_active=True).distinct()
 
         from business_account.models import BusinessAccount
         businesses = BusinessAccount.objects.filter(
             DjangoQ(business_name__icontains=query) | 
             DjangoQ(email__icontains=query) |
             DjangoQ(headline__icontains=query)
-        ).filter(is_active=True).distinct()[:15]
+        ).filter(is_active=True).distinct()
+
+        # Filter out blocked accounts
+        req_ct = ContentType.objects.get_for_model(request.user)
+        user_ct = ContentType.objects.get_for_model(User)
+        bus_ct = ContentType.objects.get_for_model(BusinessAccount)
+
+        blocked_by_me = UserBlock.objects.filter(blocker_content_type=req_ct, blocker_object_id=request.user.id)
+        blocked_me = UserBlock.objects.filter(blocked_content_type=req_ct, blocked_object_id=request.user.id)
+
+        blocked_user_ids = set()
+        blocked_bus_ids = set()
+
+        for b in blocked_by_me:
+            if b.blocked_content_type == user_ct:
+                blocked_user_ids.add(b.blocked_object_id)
+            elif b.blocked_content_type == bus_ct:
+                blocked_bus_ids.add(b.blocked_object_id)
+
+        for b in blocked_me:
+            if b.blocker_content_type == user_ct:
+                blocked_user_ids.add(b.blocker_object_id)
+            elif b.blocker_content_type == bus_ct:
+                blocked_bus_ids.add(b.blocker_object_id)
+
+        users = users.exclude(id__in=blocked_user_ids)[:15]
+        businesses = businesses.exclude(id__in=blocked_bus_ids)[:15]
 
         user_results = []
+
+
         for u in users:
             user_results.append({
                 'id': str(u.id),
@@ -553,31 +588,228 @@ class OtherUserProfileView(APIView):
         from business_account.models import BusinessAccount
         from business_account.serializers import PublicBusinessProfileSerializer
 
-        # Try to find a regular user first
+        # Find target account
+        target_account = None
+        account_type = 'personal'
         try:
-            user = User.objects.get(pk=pk)
-            serializer = PublicUserProfileSerializer(user, context={'request': request})
-            return standard_response(
-                success=True,
-                message="User profile retrieved successfully",
-                data={**serializer.data, 'account_type': 'personal'}
-            )
+            target_account = User.objects.get(pk=pk)
         except User.DoesNotExist:
-            # If not found, try to find a business account
             try:
-                business = BusinessAccount.objects.get(pk=pk)
-                serializer = PublicBusinessProfileSerializer(business, context={'request': request})
-                return standard_response(
-                    success=True,
-                    message="Business profile retrieved successfully",
-                    data={**serializer.data, 'account_type': 'business'}
-                )
+                target_account = BusinessAccount.objects.get(pk=pk)
+                account_type = 'business'
             except BusinessAccount.DoesNotExist:
                 return standard_response(
                     success=False,
                     message="Account not found",
                     status_code=status.HTTP_404_NOT_FOUND
                 )
+
+        # Block check: check if target has blocked requesting user
+        req_ct = ContentType.objects.get_for_model(request.user)
+        target_ct = ContentType.objects.get_for_model(target_account)
+
+        if UserBlock.objects.filter(
+            blocker_content_type=target_ct,
+            blocker_object_id=target_account.id,
+            blocked_content_type=req_ct,
+            blocked_object_id=request.user.id
+        ).exists():
+            return standard_response(
+                success=False,
+                message="You cannot view this profile.",
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+
+        if account_type == 'personal':
+            serializer = PublicUserProfileSerializer(target_account, context={'request': request})
+            return standard_response(
+                success=True,
+                message="User profile retrieved successfully",
+                data={**serializer.data, 'account_type': 'personal'}
+            )
+        else:
+            serializer = PublicBusinessProfileSerializer(target_account, context={'request': request})
+            return standard_response(
+                success=True,
+                message="Business profile retrieved successfully",
+                data={**serializer.data, 'account_type': 'business'}
+            )
+
+
+class UserBlockToggleView(APIView):
+    """
+    API endpoint to block or unblock another user/business account.
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [MultiModelJWTAuthentication]
+
+    def post(self, request):
+        serializer = UserBlockToggleSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+
+        blocker = request.user
+        target = serializer.validated_data['target_instance']
+        action = serializer.validated_data.get('action', 'toggle')
+
+        blocker_ct = ContentType.objects.get_for_model(blocker)
+        target_ct = ContentType.objects.get_for_model(target)
+
+        block_qs = UserBlock.objects.filter(
+            blocker_content_type=blocker_ct,
+            blocker_object_id=blocker.id,
+            blocked_content_type=target_ct,
+            blocked_object_id=target.id
+        )
+        is_already_blocked = block_qs.exists()
+
+        if action == 'unblock' or (action == 'toggle' and is_already_blocked):
+            block_qs.delete()
+            return standard_response(success=True, message=f"You have unblocked {target}")
+        else:
+            if not is_already_blocked:
+                UserBlock.objects.create(
+                    blocker_content_type=blocker_ct,
+                    blocker_object_id=blocker.id,
+                    blocked_content_type=target_ct,
+                    blocked_object_id=target.id
+                )
+
+            # Remove any active follow relationships between blocker and target in both directions
+            Follow.objects.filter(
+                (DjangoQ(follower_content_type=blocker_ct, follower_object_id=blocker.id, followed_content_type=target_ct, followed_object_id=target.id)) |
+                (DjangoQ(follower_content_type=target_ct, follower_object_id=target.id, followed_content_type=blocker_ct, followed_object_id=blocker.id))
+            ).delete()
+
+            # Mark any conversation between them as blocked
+            from chat.models import Conversation
+            Conversation.objects.filter(
+                (DjangoQ(part1_content_type=blocker_ct, part1_object_id=blocker.id, part2_content_type=target_ct, part2_object_id=target.id)) |
+                (DjangoQ(part1_content_type=target_ct, part1_object_id=target.id, part2_content_type=blocker_ct, part2_object_id=blocker.id))
+            ).update(status='blocked')
+
+            return standard_response(success=True, message=f"You have blocked {target}")
+
+
+class BlockedUsersListView(APIView):
+    """
+    API endpoint to list all accounts blocked by the authenticated user.
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [MultiModelJWTAuthentication]
+
+    def get(self, request):
+        blocker = request.user
+        blocker_ct = ContentType.objects.get_for_model(blocker)
+
+        blocks = UserBlock.objects.filter(
+            blocker_content_type=blocker_ct,
+            blocker_object_id=blocker.id
+        )
+
+        blocked_accounts = []
+        block_map = {}
+        for b in blocks:
+            obj = b.blocked
+            if obj:
+                blocked_accounts.append(obj)
+                block_map[str(obj.id)] = b
+
+        serializer = UserBlockAccountSerializer(
+            blocked_accounts, 
+            many=True, 
+            context={'request': request, 'block_map': block_map}
+        )
+
+        return standard_response(
+            success=True,
+            message="Blocked users retrieved successfully",
+            data=serializer.data
+        )
+
+
+class UserReportView(APIView):
+    """
+    API endpoint to submit a safety/abuse report on a user, business, post, or message.
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [MultiModelJWTAuthentication]
+
+    def post(self, request):
+        serializer = UserReportSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+
+        reporter = request.user
+        target = serializer.validated_data['target_instance']
+        reason = serializer.validated_data['reason']
+        description = serializer.validated_data.get('description', '')
+
+        reporter_ct = ContentType.objects.get_for_model(reporter)
+        target_ct = ContentType.objects.get_for_model(target)
+
+        report = UserReport.objects.create(
+            reporter_content_type=reporter_ct,
+            reporter_object_id=reporter.id,
+            target_content_type=target_ct,
+            target_object_id=str(target.id),
+            reason=reason,
+            description=description
+        )
+
+        return standard_response(
+            success=True,
+            message="Report submitted successfully. Thank you for helping keep our community safe.",
+            data={'report_id': report.id, 'status': report.status}
+        )
+
+
+class ProfileShareView(APIView):
+    """
+    API endpoint to retrieve profile share metadata & copyable link.
+    """
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [MultiModelJWTAuthentication]
+
+    def get(self, request, pk):
+        from business_account.models import BusinessAccount
+
+        account = None
+        account_type = 'personal'
+        try:
+            account = User.objects.get(pk=pk)
+        except User.DoesNotExist:
+            try:
+                account = BusinessAccount.objects.get(pk=pk)
+                account_type = 'business'
+            except BusinessAccount.DoesNotExist:
+                return standard_response(
+                    success=False,
+                    message="Account not found",
+                    status_code=status.HTTP_404_NOT_FOUND
+                )
+
+        is_user_model = isinstance(account, User)
+        name = f"{account.first_name} {account.last_name}".strip() if is_user_model else getattr(account, 'business_name', account.email)
+        path_segment = 'profile' if is_user_model else 'business'
+        
+        share_url = request.build_absolute_uri(f"/api/users/profile/{account.id}/")
+
+        share_data = {
+            "id": account.id,
+            "name": name,
+            "account_type": account_type,
+            "headline": getattr(account, 'headline', None),
+            "share_url": share_url,
+            "copy_link": share_url,
+            "qr_code_payload": f"anexo://{path_segment}/{account.id}"
+        }
+
+        serializer = ProfileShareSerializer(share_data)
+        return standard_response(
+            success=True,
+            message="Profile share metadata retrieved successfully",
+            data=serializer.data
+        )
+
 
 class UserLogoutView(APIView):
     permission_classes = [IsAuthenticated]
