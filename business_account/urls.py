@@ -24,6 +24,7 @@ from .views import (
     PublicBusinessMemberListView,
     BusinessVerificationSubmitView,
     BusinessVerificationStatusView,
+    BusinessCategoryListView,
 )
 from users.views import RecommendationListView, GiveRecommendationView
 
@@ -34,6 +35,8 @@ urlpatterns = [
     path('signup/', BusinessAccountRegistrationView.as_view(), name='signup'),
     path('login/', BusinessAccountLoginView.as_view(), name='login'),
     path('logout/', BusinessAccountLogoutView.as_view(), name='logout'),
+    path('categories/', BusinessCategoryListView.as_view(), name='business-categories'),
+
     
     # Token management
     path('token/refresh/', CustomBusinessTokenRefreshView.as_view(), name='token-refresh'),
