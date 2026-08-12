@@ -986,3 +986,20 @@ class BusinessVerificationStatusView(APIView):
                 message="No verification request found.",
                 data=None
             )
+
+
+class BusinessCategoryListView(APIView):
+    """
+    API endpoint to list standard business categories for dropdown selection.
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        from .serializers import STANDARD_BUSINESS_CATEGORIES
+        return standard_response(
+            success=True,
+            message="Categories retrieved successfully",
+            data={'categories': STANDARD_BUSINESS_CATEGORIES}
+        )
+
