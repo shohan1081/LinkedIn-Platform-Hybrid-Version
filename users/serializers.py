@@ -715,6 +715,7 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
     followers_count = serializers.SerializerMethodField()
     following_count = serializers.SerializerMethodField()
     is_following = serializers.SerializerMethodField()
+    profile_options = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -722,8 +723,12 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
             'id', 'full_name', 'first_name', 'last_name', 'headline', 'about', 
             'profile_picture', 'cover_photo', 'occupation', 'country', 'city', 
             'is_verified', 'verified_by', 'education', 'experience', 'recommendations', 
-            'posts', 'followers_count', 'following_count', 'is_following'
+            'posts', 'followers_count', 'following_count', 'is_following', 'profile_options'
         ]
+
+    def get_profile_options(self, obj):
+        return build_profile_options(obj, self.context.get('request'))
+
 
     def get_followers_count(self, obj):
         from .models import Follow
@@ -926,3 +931,166 @@ class FollowToggleSerializer(serializers.Serializer):
             raise serializers.ValidationError(f"The {followed_type} with ID {followed_id} does not exist.")
 
         return attrs
+
+
+def build_profile_options(obj, request):
+    """
+    Build options dictionary for profile actions (Block, Report, Share, Copy Link)
+    """
+    from .models import UserBlock
+    is_blocked = False
+    if request and hasattr(request, 'user') and request.user and request.user.is_authenticated:
+        blocker_ct = ContentType.objects.get_for_model(request.user)
+        target_ct = ContentType.objects.get_for_model(obj)
+        is_blocked = UserBlock.objects.filter(
+            blocker_content_type=blocker_ct,
+            blocker_object_id=request.user.id,
+            blocked_content_type=target_ct,
+            blocked_object_id=obj.id
+        ).exists()
+
+    is_user_model = hasattr(obj, 'first_name')
+    path_segment = 'profile' if is_user_model else 'business'
+    
+    if request:
+        share_url = request.build_absolute_uri(f"/api/users/profile/{obj.id}/")
+    else:
+        share_url = f"https://anexousa.com/{path_segment}/{obj.id}/"
+
+    block_label = "Unblock User" if is_blocked else "Block User"
+    report_label = "Report User" if is_user_model else "Report Business"
+
+    return {
+        "is_blocked": is_blocked,
+        "share_url": share_url,
+        "copy_link": share_url,
+        "available_actions": [
+            {"key": "share", "label": "Share Profile"},
+            {"key": "copy_link", "label": "Copy Profile Link"},
+            {"key": "block", "label": block_label},
+            {"key": "report", "label": report_label}
+        ]
+    }
+
+
+class UserBlockToggleSerializer(serializers.Serializer):
+    """
+    Serializer to handle block/unblock toggle or explicit action.
+    """
+    target_id = serializers.UUIDField()
+    target_type = serializers.ChoiceField(choices=['user', 'business_account'])
+    action = serializers.ChoiceField(choices=['block', 'unblock', 'toggle'], default='toggle')
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        target_id = attrs['target_id']
+        target_type = attrs['target_type']
+
+        if request and str(target_id) == str(request.user.id):
+            raise serializers.ValidationError("You cannot block yourself.")
+
+        from .models import User
+        from business_account.models import BusinessAccount
+
+        model = User if target_type == 'user' else BusinessAccount
+        try:
+            target = model.objects.get(id=target_id)
+            attrs['target_instance'] = target
+        except model.DoesNotExist:
+            raise serializers.ValidationError(f"The {target_type} with ID {target_id} does not exist.")
+
+        return attrs
+
+
+class UserBlockAccountSerializer(serializers.Serializer):
+    """
+    Serializer to represent a blocked account.
+    """
+    id = serializers.UUIDField()
+    type = serializers.SerializerMethodField()
+    name = serializers.SerializerMethodField()
+    profile_image = serializers.SerializerMethodField()
+    headline = serializers.SerializerMethodField()
+    blocked_at = serializers.SerializerMethodField()
+
+    def get_type(self, obj):
+        from .models import User
+        return 'user' if isinstance(obj, User) else 'business_account'
+
+    def get_name(self, obj):
+        from .models import User
+        if isinstance(obj, User):
+            return f"{obj.first_name} {obj.last_name}".strip() or obj.email
+        return getattr(obj, 'business_name', obj.email)
+
+    def get_profile_image(self, obj):
+        request = self.context.get('request')
+        img = getattr(obj, 'profile_picture', None) or getattr(obj, 'cover_photo', None)
+        if img and request:
+            return request.build_absolute_uri(img.url)
+        return img.url if img else None
+
+    def get_headline(self, obj):
+        return getattr(obj, 'headline', None)
+
+    def get_blocked_at(self, obj):
+        block_map = self.context.get('block_map', {})
+        block_obj = block_map.get(str(obj.id))
+        return block_obj.created_at if block_obj else None
+
+
+class UserReportSerializer(serializers.Serializer):
+    """
+    Serializer to handle reporting a user, business account, post, or message.
+    """
+    target_id = serializers.CharField()
+    target_type = serializers.ChoiceField(choices=['user', 'business_account', 'need_post', 'offer_post', 'message'])
+    reason = serializers.ChoiceField(choices=[
+        ('spam', 'Spam or misleading'),
+        ('harassment', 'Harassment or bullying'),
+        ('inappropriate', 'Inappropriate content'),
+        ('fake_account', 'Fake account or impersonation'),
+        ('scam', 'Fraud or scam'),
+        ('other', 'Other'),
+    ])
+    description = serializers.CharField(required=False, allow_blank=True, max_length=1000)
+
+    def validate(self, attrs):
+        target_id = attrs['target_id']
+        target_type = attrs['target_type']
+
+        from .models import User
+        from business_account.models import BusinessAccount
+        from posts.models import NeedPost, OfferPost
+        from chat.models import Message
+
+        target_model_map = {
+            'user': User,
+            'business_account': BusinessAccount,
+            'need_post': NeedPost,
+            'offer_post': OfferPost,
+            'message': Message,
+        }
+
+        model = target_model_map[target_type]
+        try:
+            target = model.objects.get(id=target_id)
+            attrs['target_instance'] = target
+        except Exception:
+            raise serializers.ValidationError(f"The {target_type} with ID {target_id} does not exist.")
+
+        return attrs
+
+
+class ProfileShareSerializer(serializers.Serializer):
+    """
+    Serializer for profile share metadata.
+    """
+    id = serializers.UUIDField()
+    name = serializers.CharField()
+    account_type = serializers.CharField()
+    headline = serializers.CharField(allow_null=True)
+    share_url = serializers.CharField()
+    copy_link = serializers.CharField()
+    qr_code_payload = serializers.CharField()
+
