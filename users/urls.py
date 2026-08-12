@@ -34,6 +34,10 @@ from .views import (
     FollowToggleView,
     FollowersListView,
     FollowingListView,
+    UserBlockToggleView,
+    BlockedUsersListView,
+    UserReportView,
+    ProfileShareView,
 )
 
 app_name = 'users'
@@ -66,6 +70,12 @@ urlpatterns = [
     path('support-ticket/', SupportTicketView.as_view(), name='support-ticket'),
     path('search/', GlobalUserSearchView.as_view(), name='user-search'),
     path('profile/<uuid:pk>/', OtherUserProfileView.as_view(), name='other-user-profile'),
+    path('profile/<uuid:pk>/share/', ProfileShareView.as_view(), name='profile-share'),
+
+    # Block & Safety endpoints
+    path('block/', UserBlockToggleView.as_view(), name='block-toggle'),
+    path('blocked/', BlockedUsersListView.as_view(), name='blocked-list'),
+    path('report/', UserReportView.as_view(), name='report-user'),
 
     # Recommendation endpoints
     path('recommendations/', RecommendationListView.as_view(), name='recommendation-list'),
@@ -93,4 +103,4 @@ urlpatterns = [
     path('follow/', FollowToggleView.as_view(), name='follow-toggle'),
     path('<uuid:pk>/followers/', FollowersListView.as_view(), name='followers-list'),
     path('<uuid:pk>/following/', FollowingListView.as_view(), name='following-list'),
-]
+]
