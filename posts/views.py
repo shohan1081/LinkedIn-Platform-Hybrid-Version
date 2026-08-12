@@ -35,6 +35,43 @@ def standard_response(success=True, message="", data=None, errors=None, status_c
         response_data['errors'] = errors
     return Response(response_data, status=status_code, headers=headers)
 
+def filter_blocked_posts(queryset, user):
+    """
+    Excludes posts written by users/business accounts that are blocked by or have blocked the requesting user.
+    """
+    if not user or not user.is_authenticated:
+        return queryset
+    from users.models import UserBlock, User
+    from business_account.models import BusinessAccount
+
+    req_ct = ContentType.objects.get_for_model(user)
+    user_ct = ContentType.objects.get_for_model(User)
+    bus_ct = ContentType.objects.get_for_model(BusinessAccount)
+
+    blocked_by_me = UserBlock.objects.filter(blocker_content_type=req_ct, blocker_object_id=user.id)
+    blocked_me = UserBlock.objects.filter(blocked_content_type=req_ct, blocked_object_id=user.id)
+
+    blocked_user_ids = set()
+    blocked_bus_ids = set()
+
+    for b in blocked_by_me:
+        if b.blocked_content_type == user_ct:
+            blocked_user_ids.add(b.blocked_object_id)
+        elif b.blocked_content_type == bus_ct:
+            blocked_bus_ids.add(b.blocked_object_id)
+
+    for b in blocked_me:
+        if b.blocker_content_type == user_ct:
+            blocked_user_ids.add(b.blocker_object_id)
+        elif b.blocker_content_type == bus_ct:
+            blocked_bus_ids.add(b.blocker_object_id)
+
+    return queryset.exclude(
+        (Q(author_content_type=user_ct, author_object_id__in=blocked_user_ids)) |
+        (Q(author_content_type=bus_ct, author_object_id__in=blocked_bus_ids))
+    )
+
+
 class IsAuthorOrReadOnly(IsAuthenticated):
     """
     Custom permission to only allow authors of an object to edit it.
@@ -64,6 +101,7 @@ class NeedPostListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         queryset = super().get_queryset().order_by('-created_at')
+        queryset = filter_blocked_posts(queryset, self.request.user)
         tag_name = self.request.query_params.get('tag')
         if tag_name:
             queryset = queryset.filter(tags__name=tag_name.lower())
@@ -179,6 +217,7 @@ class OfferPostListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         queryset = super().get_queryset().order_by('-created_at')
+        queryset = filter_blocked_posts(queryset, self.request.user)
         tag_name = self.request.query_params.get('tag')
         if tag_name:
             queryset = queryset.filter(tags__name=tag_name.lower())
@@ -304,8 +343,8 @@ class UserAndBusinessPostsListView(generics.ListAPIView):
         tag_name = self.request.query_params.get('tag')
         
         # Base querysets with prefetching for both Need and Offer posts
-        need_posts_qs = NeedPost.objects.all().prefetch_related('images', 'tags')
-        offer_posts_qs = OfferPost.objects.all().prefetch_related('images', 'tags')
+        need_posts_qs = filter_blocked_posts(NeedPost.objects.all().prefetch_related('images', 'tags'), user)
+        offer_posts_qs = filter_blocked_posts(OfferPost.objects.all().prefetch_related('images', 'tags'), user)
 
         # Apply tag filter if provided
         if tag_name:
