@@ -101,6 +101,16 @@ class ConversationStartView(APIView):
         if str(user.id) == str(other_user_id):
             return standard_response(success=False, message="You cannot chat with yourself.", status_code=status.HTTP_400_BAD_REQUEST)
 
+        # Check block status between user and other_user
+        from users.models import UserBlock
+        is_blocked = UserBlock.objects.filter(
+            (Q(blocker_content_type=user_ct, blocker_object_id=user.id, blocked_content_type=other_ct, blocked_object_id=other_user.id)) |
+            (Q(blocker_content_type=other_ct, blocker_object_id=other_user.id, blocked_content_type=user_ct, blocked_object_id=user.id))
+        ).exists()
+
+        if is_blocked:
+            return standard_response(success=False, message="Cannot start conversation with a blocked user.", status_code=status.HTTP_403_FORBIDDEN)
+
         # Check for existing conversation (without a post)
         conv = Conversation.objects.filter(
             Q(part1_content_type=user_ct, part1_object_id=user.id, part2_content_type=other_ct, part2_object_id=other_user.id, post_content_type__isnull=True) |
@@ -115,6 +125,7 @@ class ConversationStartView(APIView):
                 part2_object_id=other_user.id,
                 status='active' # Direct chats are active by default
             )
+
 
         serializer = ConversationSerializer(conv, context={'request': request})
         return standard_response(
@@ -179,6 +190,13 @@ class MessageListView(generics.ListCreateAPIView):
         conv = self.get_conversation()
         if not conv:
             return standard_response(success=False, message="Conversation not found or unauthorized.", status_code=status.HTTP_404_NOT_FOUND)
+        
+        if conv.status == 'blocked':
+            return standard_response(
+                success=False, 
+                message="This conversation is blocked.", 
+                status_code=status.HTTP_403_FORBIDDEN
+            )
         
         if conv.status != 'active':
             return standard_response(
