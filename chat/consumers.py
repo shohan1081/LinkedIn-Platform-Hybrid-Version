@@ -100,6 +100,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
     def is_participant(self):
         try:
             conv = Conversation.objects.get(id=self.conversation_id)
+            if conv.status == 'blocked':
+                return False
             user_id = str(self.user.id)
             # Both participant IDs are UUIDs, compare as strings
             is_p1 = str(conv.part1_object_id) == user_id
@@ -107,6 +109,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return is_p1 or is_p2
         except Exception:
             return False
+
 
     @database_sync_to_async
     def save_message(self, text):
