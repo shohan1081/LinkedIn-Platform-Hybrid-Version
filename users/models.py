@@ -458,3 +458,82 @@ class Follow(models.Model):
 
     def __str__(self):
         return f"{self.follower} follows {self.followed}"
+
+
+class UserBlock(models.Model):
+    """
+    Polymorphic block system between all account types (User, BusinessAccount).
+    """
+    blocker_content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, related_name='blocked_accounts_ct')
+    blocker_object_id = models.UUIDField()
+    blocker = GenericForeignKey('blocker_content_type', 'blocker_object_id')
+
+    blocked_content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, related_name='blocked_by_ct')
+    blocked_object_id = models.UUIDField()
+    blocked = GenericForeignKey('blocked_content_type', 'blocked_object_id')
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = _('user block')
+        verbose_name_plural = _('user blocks')
+        ordering = ['-created_at']
+        unique_together = ('blocker_content_type', 'blocker_object_id', 'blocked_content_type', 'blocked_object_id')
+        indexes = [
+            models.Index(fields=['blocker_content_type', 'blocker_object_id']),
+            models.Index(fields=['blocked_content_type', 'blocked_object_id']),
+        ]
+
+    def __str__(self):
+        return f"{self.blocker} blocked {self.blocked}"
+
+
+class UserReport(models.Model):
+    """
+    Polymorphic report system for user safety. Supports reporting users, business accounts, posts, or messages.
+    """
+    REASON_CHOICES = [
+        ('spam', 'Spam or misleading'),
+        ('harassment', 'Harassment or bullying'),
+        ('inappropriate', 'Inappropriate content'),
+        ('fake_account', 'Fake account or impersonation'),
+        ('scam', 'Fraud or scam'),
+        ('other', 'Other'),
+    ]
+
+    STATUS_CHOICES = [
+        ('pending', 'Pending Review'),
+        ('reviewed', 'Reviewed'),
+        ('action_taken', 'Action Taken'),
+        ('dismissed', 'Dismissed'),
+    ]
+
+    reporter_content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, related_name='reports_submitted_ct')
+    reporter_object_id = models.UUIDField()
+    reporter = GenericForeignKey('reporter_content_type', 'reporter_object_id')
+
+    target_content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, related_name='reports_received_ct')
+    target_object_id = models.CharField(max_length=255)
+    target = GenericForeignKey('target_content_type', 'target_object_id')
+
+    reason = models.CharField(max_length=50, choices=REASON_CHOICES, default='other')
+    description = models.TextField(blank=True, null=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    admin_notes = models.TextField(blank=True, null=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _('user report')
+        verbose_name_plural = _('user reports')
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['reporter_content_type', 'reporter_object_id']),
+            models.Index(fields=['target_content_type', 'target_object_id']),
+            models.Index(fields=['status']),
+        ]
+
+    def __str__(self):
+        return f"Report by {self.reporter} on {self.target} ({self.reason})"
+
