@@ -252,19 +252,65 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         return attrs
 
 
+STANDARD_BUSINESS_CATEGORIES = [
+    "Technology & Software",
+    "Logistics & Supply Chain",
+    "Marketing & Advertising",
+    "Legal Services",
+    "Finance & Accounting",
+    "Design & Creative",
+    "Real Estate & Construction",
+    "Healthcare & Biotech",
+    "Education & Training",
+    "Retail & E-commerce",
+    "Hospitality & Tourism",
+    "Other (Specify custom)"
+]
+
+
+def process_custom_category(attrs):
+    industry_cat = attrs.get('industry_category')
+    custom_cat = attrs.get('custom_industry_category')
+
+    if industry_cat:
+        cleaned_cat = industry_cat.strip()
+        if cleaned_cat.lower().startswith('other'):
+            if not custom_cat or not custom_cat.strip():
+                raise serializers.ValidationError({
+                    'custom_industry_category': 'Please enter your business category.'
+                })
+            attrs['industry_category'] = custom_cat.strip()
+        else:
+            attrs['industry_category'] = cleaned_cat
+
+    attrs.pop('custom_industry_category', None)
+    return attrs
+
+
 class BusinessAccountProfileRegistrationSerializer(serializers.ModelSerializer):
     """
     Serializer for completing business account profile
     """
     website = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    custom_industry_category = serializers.CharField(
+        write_only=True, 
+        required=False, 
+        allow_blank=True, 
+        allow_null=True,
+        help_text="Custom category name if 'Other (Specify custom)' is selected"
+    )
 
     class Meta:
         model = BusinessAccount
         fields = [
-            'role_position', 'business_name', 'industry_category',
+            'role_position', 'business_name', 'industry_category', 'custom_industry_category',
             'business_email', 'website', 'headline', 'profile_picture', 'cover_photo', 'about',
             'address', 'address_line_2', 'city', 'state', 'zip_code'
         ]
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        return process_custom_category(attrs)
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
@@ -286,7 +332,6 @@ class BusinessAccountProfileRegistrationSerializer(serializers.ModelSerializer):
         if not value.startswith(('http://', 'https://')):
             value = f'https://{value}'
             
-        # Use Django's URL validator to ensure it's actually valid after prepending
         from django.core.validators import URLValidator
         from django.core.exceptions import ValidationError as DjangoValidationError
         validate_url = URLValidator()
@@ -298,11 +343,19 @@ class BusinessAccountProfileRegistrationSerializer(serializers.ModelSerializer):
         return value
 
 
+
 class BusinessAccountProfileSerializer(serializers.ModelSerializer):
     """
     Serializer for business account profile (read and update)
     """
     website = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    custom_industry_category = serializers.CharField(
+        write_only=True, 
+        required=False, 
+        allow_blank=True, 
+        allow_null=True,
+        help_text="Custom category name if 'Other (Specify custom)' is selected"
+    )
     account_type = serializers.SerializerMethodField()
     author_id = serializers.SerializerMethodField()
     followers_count = serializers.SerializerMethodField()
@@ -311,7 +364,7 @@ class BusinessAccountProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = BusinessAccount
         fields = [
-            'id', 'author_id', 'email', 'role_position', 'business_name', 'industry_category',
+            'id', 'author_id', 'email', 'role_position', 'business_name', 'industry_category', 'custom_industry_category',
             'business_email', 'website', 'headline', 'about', 'profile_picture', 'cover_photo',
             'address', 'address_line_2', 'city', 'state', 'zip_code',
             'is_email_verified', 'is_profile_complete', 'is_verified', 'account_type',
@@ -323,6 +376,11 @@ class BusinessAccountProfileSerializer(serializers.ModelSerializer):
             'followers_count', 'following_count',
             'date_joined', 'last_login', 'updated_at'
         ]
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        return process_custom_category(attrs)
+
 
     def get_followers_count(self, obj):
         from users.models import Follow
@@ -428,6 +486,7 @@ class PublicBusinessProfileSerializer(serializers.ModelSerializer):
     followers_count = serializers.SerializerMethodField()
     following_count = serializers.SerializerMethodField()
     is_following = serializers.SerializerMethodField()
+    profile_options = serializers.SerializerMethodField()
 
     class Meta:
         model = BusinessAccount
@@ -435,8 +494,13 @@ class PublicBusinessProfileSerializer(serializers.ModelSerializer):
             'id', 'business_name', 'headline', 'about', 'industry_category', 
             'website', 'city', 'state', 'profile_picture', 
             'cover_photo', 'recommendations', 'posts', 'verified_members_count',
-            'followers_count', 'following_count', 'is_following', 'is_verified'
+            'followers_count', 'following_count', 'is_following', 'is_verified', 'profile_options'
         ]
+
+    def get_profile_options(self, obj):
+        from users.serializers import build_profile_options
+        return build_profile_options(obj, self.context.get('request'))
+
 
     def get_followers_count(self, obj):
         from users.models import Follow
