@@ -1,7 +1,22 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.translation import gettext_lazy as _
-from .models import User, UserLoginHistory, AccountDeletionRequest, ProfileDataDeletionRequest
+from .models import User, UserLoginHistory, AccountDeletionRequest, ProfileDataDeletionRequest, UserBlock, UserReport
+
+@admin.register(UserBlock)
+class UserBlockAdmin(admin.ModelAdmin):
+    list_display = ('blocker', 'blocked', 'created_at')
+    search_fields = ('blocker_object_id', 'blocked_object_id')
+    readonly_fields = ('created_at',)
+
+@admin.register(UserReport)
+class UserReportAdmin(admin.ModelAdmin):
+    list_display = ('reporter', 'target', 'reason', 'status', 'created_at')
+    list_filter = ('reason', 'status', 'created_at')
+    search_fields = ('reporter_object_id', 'target_object_id', 'description')
+    readonly_fields = ('created_at', 'updated_at')
+    fields = ('reporter_content_type', 'reporter_object_id', 'target_content_type', 'target_object_id', 'reason', 'description', 'status', 'admin_notes', 'created_at', 'updated_at')
+
 from django.core.mail import send_mail
 from django.urls import reverse
 from django.utils.html import format_html
