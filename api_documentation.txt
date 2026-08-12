@@ -71,26 +71,51 @@ The API returns responses in a standardized format:
 - **Endpoint:** `login/`
 - **Method:** `POST`
 
-### 3. Profile Registration (Complete Profile)
+### 3. Business Categories List
+- **Endpoint:** `categories/`
+- **Method:** `GET`
+- **Authentication:** None (Public)
+- **Description:** Returns the standard list of business categories for dropdown population.
+
+### 4. Profile Registration (Complete Profile)
 - **Endpoint:** `profile-register/`
 - **Method:** `PATCH` / `PUT`
 - **Authentication:** Required (Business Account Token)
-- **Request Body (JSON):**
+- **Standard Category Request Body (JSON):**
 ```json
 {
     "role_position": "CEO",
-    "business_name": "Tech Corp",
-    "industry_category": "Software",
-    "business_email": "contact@techcorp.com",
-    "website": "https://techcorp.com",
-    "address": "123 Main St",
-    "city": "New York",
+    "business_name": "Example Corp",
+    "industry_category": "Technology & Software",
+    "business_email": "contact@examplecorp.com",
+    "website": "https://examplecorp.com",
+    "address": "456 Business Blvd",
+    "city": "Metropolis",
     "state": "NY",
     "zip_code": "10001"
 }
 ```
 
-### 4. Verification Requests (`/api/business-account/verification/`)
+- **Custom Category Request Body (JSON):**
+When the user selects `"Other (Specify custom)"`, send `"industry_category": "Other (Specify custom)"` along with `"custom_industry_category"`:
+```json
+{
+    "role_position": "CEO",
+    "business_name": "Example Corp",
+    "industry_category": "Other (Specify custom)",
+    "custom_industry_category": "Satellite & Aerospace Engineering",
+    "business_email": "contact@examplecorp.com",
+    "website": "https://examplecorp.com",
+    "address": "456 Business Blvd",
+    "city": "Metropolis",
+    "state": "NY",
+    "zip_code": "10001"
+}
+```
+*The backend saves `"Satellite & Aerospace Engineering"` as the business's `industry_category`.*
+
+### 5. Verification Requests (`/api/business-account/verification/`)
+
 
 #### Request Verification (User Only)
 - **Endpoint:** `request/`
